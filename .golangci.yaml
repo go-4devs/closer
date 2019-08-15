@@ -1,0 +1,11 @@
+# More info on config here: https://github.com/golangci/golangci-lint#config-file
+run:
+  tests: true
+
+output:
+  format: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true
+
+linters:
+  enable-all: true
