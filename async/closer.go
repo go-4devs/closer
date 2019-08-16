@@ -1,4 +1,4 @@
-package closer
+package async
 
 import (
 	"context"
@@ -7,27 +7,27 @@ import (
 	"sync"
 )
 
-// AsyncOptions configure closer
-type AsyncOptions func(*Async)
+// Options configure closer
+type Options func(*Closer)
 
 // WithHandleError configure error handler
-func WithHandleError(he func(error)) AsyncOptions {
-	return func(async *Async) {
+func WithHandleError(he func(error)) Options {
+	return func(async *Closer) {
 		async.he = he
 	}
 }
 
-// NewAsync create new closer with options
-func NewAsync(opts ...AsyncOptions) *Async {
-	a := &Async{}
+// New create new closer with options
+func New(opts ...Options) *Closer {
+	a := &Closer{}
 	for _, o := range opts {
 		o(a)
 	}
 	return a
 }
 
-// Async closer
-type Async struct {
+// Closer closer
+type Closer struct {
 	sync.Mutex
 	once sync.Once
 	done chan struct{}
@@ -35,7 +35,8 @@ type Async struct {
 	he   func(error)
 }
 
-func (c *Async) Wait(ctx context.Context, sig ...os.Signal) {
+// Wait when done context or notify signals
+func (c *Closer) Wait(ctx context.Context, sig ...os.Signal) {
 	if c.done == nil {
 		c.done = make(chan struct{})
 	}
@@ -55,13 +56,15 @@ func (c *Async) Wait(ctx context.Context, sig ...os.Signal) {
 	<-c.done
 }
 
-func (c *Async) Add(f ...func() error) {
+// Add close functions
+func (c *Closer) Add(f ...func() error) {
 	c.Lock()
 	c.fnc = append(c.fnc, f...)
 	c.Unlock()
 }
 
-func (c *Async) Close() error {
+// Close close all closers async
+func (c *Closer) Close() error {
 	c.once.Do(func() {
 		if c.he == nil {
 			c.he = func(e error) {}

@@ -1,4 +1,4 @@
-package closer
+package async
 
 import (
 	"context"
@@ -11,13 +11,13 @@ import (
 )
 
 func TestAsync_Add(t *testing.T) {
-	c := Async{}
+	c := Closer{}
 	c.Add(func() error { return nil })
 	require.Len(t, c.fnc, 1)
 }
 
 func TestAsync_Close(t *testing.T) {
-	c := Async{}
+	c := Closer{}
 	var cnt int
 	c.Add(func() error {
 		cnt++
@@ -30,7 +30,7 @@ func TestAsync_Close(t *testing.T) {
 	require.Equal(t, 1, cnt)
 
 	var e int
-	as := NewAsync(WithHandleError(func(error) {
+	as := New(WithHandleError(func(error) {
 		e++
 	}))
 	as.Add(func() error { cnt++; return nil }, func() error { cnt++; return errors.New("some error") })
@@ -38,7 +38,7 @@ func TestAsync_Close(t *testing.T) {
 	require.Equal(t, 3, cnt)
 	require.Equal(t, 1, e)
 
-	c = Async{}
+	c = Closer{}
 	var res string
 	tc := func(d string, t time.Duration) func() error {
 		return func() error { time.Sleep(t); res += d; return nil }
@@ -49,7 +49,7 @@ func TestAsync_Close(t *testing.T) {
 }
 
 func TestAsync_Wait(t *testing.T) {
-	c := Async{}
+	c := Closer{}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Microsecond)
 	defer cancel()
 	var cnt int
@@ -58,7 +58,7 @@ func TestAsync_Wait(t *testing.T) {
 	c.Wait(ctx)
 	require.Equal(t, 1, cnt)
 
-	c = Async{}
+	c = Closer{}
 	time.AfterFunc(time.Microsecond, func() {
 		require.Nil(t, syscall.Kill(syscall.Getpid(), syscall.SIGTERM))
 	})
