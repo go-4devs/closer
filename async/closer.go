@@ -35,7 +35,7 @@ type Closer struct {
 	he   func(error)
 }
 
-// Wait when done context or notify signals
+// Wait when done context or notify signals or close all
 func (c *Closer) Wait(ctx context.Context, sig ...os.Signal) {
 	if c.done == nil {
 		c.done = make(chan struct{})
@@ -51,7 +51,6 @@ func (c *Closer) Wait(ctx context.Context, sig ...os.Signal) {
 		case <-ctx.Done():
 		}
 		_ = c.Close()
-		close(c.done)
 	}()
 	<-c.done
 }
@@ -65,7 +64,11 @@ func (c *Closer) Add(f ...func() error) {
 
 // Close close all closers async
 func (c *Closer) Close() error {
+	if c.done == nil {
+		c.done = make(chan struct{})
+	}
 	c.once.Do(func() {
+		defer close(c.done)
 		if c.he == nil {
 			c.he = func(e error) {}
 		}

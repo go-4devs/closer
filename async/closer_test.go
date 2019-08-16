@@ -25,7 +25,7 @@ func TestAsync_Close(t *testing.T) {
 	})
 	require.Nil(t, c.Close())
 	require.Equal(t, 1, cnt)
-
+	c.Wait(context.Background())
 	require.Nil(t, c.Close())
 	require.Equal(t, 1, cnt)
 
@@ -43,7 +43,7 @@ func TestAsync_Close(t *testing.T) {
 	tc := func(d string, t time.Duration) func() error {
 		return func() error { time.Sleep(t); res += d; return nil }
 	}
-	c.Add(tc("one", time.Second/2), tc("two", time.Microsecond), tc("three", time.Second/3))
+	c.Add(tc("one", time.Millisecond/2), tc("two", time.Microsecond), tc("three", time.Millisecond/5))
 	require.Nil(t, c.Close())
 	require.Equal(t, "twothreeone", res)
 }
@@ -53,9 +53,13 @@ func TestAsync_Wait(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Microsecond)
 	defer cancel()
 	var cnt int
+	go func() {
+		c.Wait(ctx)
+		cnt++
+	}()
 	cl := func() error { cnt++; return nil }
 	c.Add(cl)
-	c.Wait(ctx)
+	c.Wait(context.Background())
 	require.Equal(t, 1, cnt)
 
 	c = Closer{}
@@ -64,5 +68,5 @@ func TestAsync_Wait(t *testing.T) {
 	})
 	c.Add(cl)
 	c.Wait(context.Background(), syscall.SIGTERM, syscall.SIGINT)
-	require.Equal(t, 2, cnt)
+	require.Equal(t, 3, cnt)
 }
