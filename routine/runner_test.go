@@ -9,33 +9,38 @@ import (
 )
 
 func TestGo(t *testing.T) {
-	var run int
+	dt := make(map[string]int)
 	var mu sync.Mutex
-	fnc := func() {
-		time.Sleep(time.Millisecond)
-		mu.Lock()
-		run++
-		mu.Unlock()
+	fnc := func(name string) func() {
+		return func() {
+			time.Sleep(time.Millisecond)
+			mu.Lock()
+			dt[name]++
+			mu.Unlock()
+		}
 	}
-	Go(fnc, fnc)
-	mu.Lock()
-	require.Equal(t, 0, run)
-	mu.Unlock()
+	require.Equal(t, 0, dt["once"])
+	Go(fnc("once"))
+	Run(fnc("twice"), fnc("twice"))
 	Wait()
-	require.Equal(t, 2, run)
+	require.Equal(t, 1, dt["once"])
+	require.Equal(t, 2, dt["twice"])
 }
 
-func TestWaitGroup_Close(t *testing.T) {
-	var run int
+func TestClose(t *testing.T) {
+	dt := make(map[string]int)
 	var mu sync.Mutex
-	fnc := func() {
-		time.Sleep(time.Millisecond)
-		mu.Lock()
-		run++
-		mu.Unlock()
+	fnc := func(name string) func() {
+		return func() {
+			time.Sleep(time.Millisecond)
+			mu.Lock()
+			dt[name]++
+			mu.Unlock()
+		}
 	}
-	wg := WaitGroup{}
-	wg.Go(fnc, fnc)
-	require.Nil(t, wg.Close())
-	require.Equal(t, 2, run)
+	Go(fnc("once"))
+	Run(fnc("twice"), fnc("twice"))
+	require.Nil(t, Close())
+	require.Equal(t, 1, dt["once"])
+	require.Equal(t, 2, dt["twice"])
 }
