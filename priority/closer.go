@@ -57,6 +57,17 @@ func (c *Closer) Add(f ...func() error) {
 	c.AddByPriority(Normal, f...)
 }
 
+// AddLast add closer which execute at the end
+func (c *Closer) AddLast(f ...func() error) {
+	c.AddByPriority(Last, f...)
+}
+
+// AddLast add closer which execute at the begin
+func (c *Closer) AddFirst(f ...func() error) {
+	c.AddByPriority(First, f...)
+}
+
+// AddByPriority add close by priority 255 its close first 0 - last
 func (c *Closer) AddByPriority(priority uint8, f ...func() error) {
 	if len(f) == 0 {
 		return
@@ -106,10 +117,10 @@ func (c *Closer) wait(wg *sync.WaitGroup, start time.Time, idx int) {
 }
 
 func (c *Closer) after(start time.Time, idx int) <-chan time.Time {
-	p := time.Now().Sub(start)
+	p := time.Since(start)
 	timeout := c.timeout - p
 	if len(c.priority) != idx+1 {
-		timeout = timeout - c.timeout/math.MaxUint8*time.Duration(c.priority[idx+1])
+		timeout -= c.timeout / math.MaxUint8 * time.Duration(c.priority[idx+1])
 	}
 	if timeout <= 0 {
 		return nil
