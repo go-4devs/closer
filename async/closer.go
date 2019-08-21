@@ -13,7 +13,7 @@ type Options func(*Closer)
 // WithHandleError configure error handler
 func WithHandleError(he func(error)) Options {
 	return func(async *Closer) {
-		async.he = he
+		async.ErrHandler = he
 	}
 }
 
@@ -29,17 +29,14 @@ func New(opts ...Options) *Closer {
 // Closer closer
 type Closer struct {
 	sync.Mutex
-	once sync.Once
-	done chan struct{}
-	fnc  []func() error
-	he   func(error)
+	once       sync.Once
+	d          chan struct{}
+	fnc        []func() error
+	ErrHandler func(error)
 }
 
 // Wait when done context or notify signals or close all
 func (c *Closer) Wait(ctx context.Context, sig ...os.Signal) {
-	if c.done == nil {
-		c.done = make(chan struct{})
-	}
 	go func() {
 		ch := make(chan os.Signal, 1)
 		if len(sig) > 0 {
@@ -52,7 +49,16 @@ func (c *Closer) Wait(ctx context.Context, sig ...os.Signal) {
 		}
 		_ = c.Close()
 	}()
-	<-c.done
+	<-c.done()
+}
+
+func (c *Closer) done() chan struct{} {
+	c.Lock()
+	if c.d == nil {
+		c.d = make(chan struct{})
+	}
+	c.Unlock()
+	return c.d
 }
 
 // Add close functions
@@ -64,13 +70,10 @@ func (c *Closer) Add(f ...func() error) {
 
 // Close close all closers async
 func (c *Closer) Close() error {
-	if c.done == nil {
-		c.done = make(chan struct{})
-	}
 	c.once.Do(func() {
-		defer close(c.done)
-		if c.he == nil {
-			c.he = func(e error) {}
+		defer close(c.done())
+		if c.ErrHandler == nil {
+			c.ErrHandler = func(e error) {}
 		}
 		c.Lock()
 		funcs := c.fnc
@@ -86,7 +89,7 @@ func (c *Closer) Close() error {
 		for i := 0; i < cap(errs); i++ {
 			err := <-errs
 			if err != nil {
-				c.he(err)
+				c.ErrHandler(err)
 			}
 		}
 	})

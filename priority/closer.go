@@ -22,14 +22,14 @@ type Options func(*Closer)
 // WithHandleError configure error handler
 func WithHandleError(he func(error)) Options {
 	return func(async *Closer) {
-		async.he = he
+		async.ErrHandler = he
 	}
 }
 
 // WithHandleError configure error handler
 func WithTimeout(d time.Duration) Options {
 	return func(async *Closer) {
-		async.timeout = d
+		async.Timeout = d
 	}
 }
 
@@ -42,15 +42,16 @@ func New(opts ...Options) *Closer {
 	return a
 }
 
+// Closer by priority
 type Closer struct {
 	sync.Mutex
-	fnc      map[uint8][]func() error
-	priority prioritySlice
-	once     sync.Once
-	he       func(error)
-	timeout  time.Duration
-	len      int
-	done     chan struct{}
+	fnc        map[uint8][]func() error
+	priority   prioritySlice
+	once       sync.Once
+	ErrHandler func(error)
+	Timeout    time.Duration
+	len        int
+	d          chan struct{}
 }
 
 func (c *Closer) Add(f ...func() error) {
@@ -86,9 +87,6 @@ func (c *Closer) AddByPriority(priority uint8, f ...func() error) {
 }
 
 func (c *Closer) Wait(ctx context.Context, sig ...os.Signal) {
-	if c.done == nil {
-		c.done = make(chan struct{})
-	}
 	go func() {
 		ch := make(chan os.Signal, 1)
 		if len(sig) > 0 {
@@ -101,7 +99,16 @@ func (c *Closer) Wait(ctx context.Context, sig ...os.Signal) {
 		}
 		_ = c.Close()
 	}()
-	<-c.done
+	<-c.done()
+}
+
+func (c *Closer) done() chan struct{} {
+	c.Lock()
+	if c.d == nil {
+		c.d = make(chan struct{})
+	}
+	c.Unlock()
+	return c.d
 }
 
 func (c *Closer) wait(wg *sync.WaitGroup, start time.Time, idx int) {
@@ -117,10 +124,9 @@ func (c *Closer) wait(wg *sync.WaitGroup, start time.Time, idx int) {
 }
 
 func (c *Closer) after(start time.Time, idx int) <-chan time.Time {
-	p := time.Since(start)
-	timeout := c.timeout - p
+	timeout := c.Timeout - time.Since(start)
 	if len(c.priority) != idx+1 {
-		timeout -= c.timeout / math.MaxUint8 * time.Duration(c.priority[idx+1])
+		timeout -= c.Timeout / math.MaxUint8 * time.Duration(c.priority[idx+1])
 	}
 	if timeout <= 0 {
 		return nil
@@ -130,13 +136,10 @@ func (c *Closer) after(start time.Time, idx int) <-chan time.Time {
 }
 
 func (c *Closer) Close() error {
-	if c.done == nil {
-		c.done = make(chan struct{})
-	}
 	c.once.Do(func() {
 		start := time.Now()
-		if c.he == nil {
-			c.he = func(error) {}
+		if c.ErrHandler == nil {
+			c.ErrHandler = func(error) {}
 		}
 		c.Lock()
 		funcs := c.fnc
@@ -144,11 +147,11 @@ func (c *Closer) Close() error {
 		c.Unlock()
 		errs := make(chan error, c.len)
 		go func() {
-			defer close(c.done)
+			defer close(c.done())
 			for i := 0; i < cap(errs); i++ {
 				err := <-errs
 				if err != nil {
-					go c.he(err)
+					go c.ErrHandler(err)
 				}
 			}
 		}()

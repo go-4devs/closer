@@ -67,6 +67,7 @@ func TestCloser_Close(t *testing.T) {
 	closed := &closed{
 		d: make([]string, 0),
 	}
+	go cl.Wait(context.Background())
 	cl.Add()
 	cl.Add(closed.closeFnc("one", time.Microsecond))
 	cl.AddLast(closed.closeFnc("last", time.Microsecond))
