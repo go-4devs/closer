@@ -72,10 +72,11 @@ func (c *Closer) Add(f ...func() error) {
 func (c *Closer) Close() error {
 	c.once.Do(func() {
 		defer close(c.done())
-		if c.ErrHandler == nil {
-			c.ErrHandler = func(e error) {}
-		}
 		c.Lock()
+		eh := func(error) {}
+		if c.ErrHandler != nil {
+			eh = c.ErrHandler
+		}
 		funcs := c.fnc
 		c.fnc = nil
 		c.Unlock()
@@ -89,7 +90,7 @@ func (c *Closer) Close() error {
 		for i := 0; i < cap(errs); i++ {
 			err := <-errs
 			if err != nil {
-				c.ErrHandler(err)
+				go eh(err)
 			}
 		}
 	})
