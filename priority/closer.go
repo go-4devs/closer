@@ -111,22 +111,28 @@ func (c *Closer) done() chan struct{} {
 	return c.d
 }
 
-func (c *Closer) wait(wg *sync.WaitGroup, start time.Time, idx int) {
+type wait struct {
+	priority prioritySlice
+	timeout  time.Duration
+	sync.WaitGroup
+}
+
+func (w *wait) wait(start time.Time, idx int) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		wg.Wait()
+		w.Wait()
 	}()
 	select {
-	case <-c.after(start, idx):
+	case <-w.after(start, idx):
 	case <-done:
 	}
 }
 
-func (c *Closer) after(start time.Time, idx int) <-chan time.Time {
-	timeout := c.Timeout - time.Since(start)
-	if len(c.priority) != idx+1 {
-		timeout -= c.Timeout / math.MaxUint8 * time.Duration(c.priority[idx+1])
+func (w *wait) after(start time.Time, idx int) <-chan time.Time {
+	timeout := w.timeout - time.Since(start)
+	if len(w.priority) != idx+1 {
+		timeout -= w.timeout / math.MaxUint8 * time.Duration(w.priority[idx+1])
 	}
 	if timeout <= 0 {
 		return nil
@@ -138,10 +144,15 @@ func (c *Closer) after(start time.Time, idx int) <-chan time.Time {
 func (c *Closer) Close() error {
 	c.once.Do(func() {
 		start := time.Now()
-		if c.ErrHandler == nil {
-			c.ErrHandler = func(error) {}
-		}
 		c.Lock()
+		eh := func(error) {}
+		if c.ErrHandler != nil {
+			eh = c.ErrHandler
+		}
+		w := &wait{
+			priority: c.priority,
+			timeout:  c.Timeout,
+		}
 		funcs := c.fnc
 		c.fnc = nil
 		c.Unlock()
@@ -151,22 +162,21 @@ func (c *Closer) Close() error {
 			for i := 0; i < cap(errs); i++ {
 				err := <-errs
 				if err != nil {
-					go c.ErrHandler(err)
+					go eh(err)
 				}
 			}
 		}()
-		wg := &sync.WaitGroup{}
 		for i, p := range c.priority {
-			wg.Add(len(funcs[p]))
+			w.Add(len(funcs[p]))
 			for _, f := range funcs[p] {
 				go func(f func() error) {
 					errs <- f()
-					wg.Done()
+					w.Done()
 				}(f)
 			}
-			c.wait(wg, start, i)
+			w.wait(start, i)
 		}
-		wg.Wait()
+		w.Wait()
 	})
 	return nil
 }
