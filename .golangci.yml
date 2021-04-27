@@ -1,0 +1,46 @@
+run:
+  timeout: 5m
+
+linters-settings:
+    dupl:
+      threshold: 100
+    funlen:
+      lines: 100
+      statements: 50
+    goconst:
+      min-len: 2
+      min-occurrences: 2
+    gocyclo:
+      min-complexity: 15
+    golint:
+      min-confidence: 0
+    govet:
+      check-shadowing: true
+    lll:
+      line-length: 140
+    maligned:
+      suggest-new: true
+    misspell:
+      locale: US  
+
+linters:
+    enable-all: true
+    disable:
+      - exhaustivestruct
+      - maligned
+      - interfacer
+      - scopelint
+
+issues:
+  # Excluding configuration per-path, per-linter, per-text and per-source
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - gomnd
+        - exhaustivestruct
+        - wrapcheck
+    - path: test/*
+      linters:
+        - gomnd
+        - exhaustivestruct
+        - wrapcheck
