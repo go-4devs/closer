@@ -43,7 +43,7 @@ func (c *Closed) CloseFnc(name string, sleep time.Duration) func() error {
 	}
 }
 
-func RequireNil(t *testing.T, exp interface{}) {
+func RequireNil(t *testing.T, exp any) {
 	t.Helper()
 
 	if exp != nil {

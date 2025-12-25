@@ -15,36 +15,38 @@ import (
 func TestAsyncClose(t *testing.T) {
 	t.Parallel()
 
-	c := async.Closer{}
-	closedFn := &test.Closed{}
-	c.Add(closedFn.CloseFnc("one", 0))
-	test.RequireNil(t, c.Close())
+	var a1closer async.Closer
+
+	closedFn := new(test.Closed)
+	a1closer.Add(closedFn.CloseFnc("one", 0))
+	test.RequireNil(t, a1closer.Close())
 	closedFn.TestLen(t, 1)
 
-	c.Wait(context.Background())
-	test.RequireNil(t, c.Close())
+	a1closer.Wait(context.Background())
+	test.RequireNil(t, a1closer.Close())
 	closedFn.TestLen(t, 1)
 
-	as := async.New(async.WithHandleError(func(e error) {
-		if !errors.Is(e, test.ErrClose) {
-			t.Fatalf("expect: %s, got:%s", test.ErrClose, e)
+	asCloser := async.New(async.WithHandleError(func(err error) {
+		if !errors.Is(err, test.ErrClose) {
+			t.Fatalf("expect: %s, got:%s", test.ErrClose, err)
 		}
 	}))
-	as.Add(closedFn.CloseFnc("two", 0), func() error {
+	asCloser.Add(closedFn.CloseFnc("two", 0), func() error {
 		test.RequireNil(t, closedFn.CloseFnc("two", 0)())
 
 		return test.ErrClose
 	})
-	test.RequireNil(t, as.Close())
+	test.RequireNil(t, asCloser.Close())
 	closedFn.TestLen(t, 3)
 
-	c = async.Closer{}
+	var a2closer async.Closer
+
 	closedFn = &test.Closed{}
-	c.Add(
+	a2closer.Add(
 		closedFn.CloseFnc("one", time.Millisecond/2),
 		closedFn.CloseFnc("two", time.Microsecond),
 		closedFn.CloseFnc("three", time.Millisecond/5))
-	test.RequireNil(t, c.Close())
+	test.RequireNil(t, a2closer.Close())
 
 	closedFn.TestLen(t, 3)
 }
@@ -52,7 +54,7 @@ func TestAsyncClose(t *testing.T) {
 func TestAsyncWait_Timeout(t *testing.T) {
 	t.Parallel()
 
-	c := &async.Closer{}
+	aCloser := async.New()
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Microsecond)
 	defer cancel()
@@ -60,18 +62,18 @@ func TestAsyncWait_Timeout(t *testing.T) {
 	var cnt int32
 
 	go func() {
-		c.Wait(ctx)
+		aCloser.Wait(ctx)
 		atomic.AddInt32(&cnt, 1)
 	}()
 
-	cl := func() error {
+	closeFn := func() error {
 		atomic.AddInt32(&cnt, 1)
 
 		return nil
 	}
 
-	c.Add(cl)
-	c.Wait(context.Background())
+	aCloser.Add(closeFn)
+	aCloser.Wait(context.Background())
 
 	if atomic.LoadInt32(&cnt) != 1 {
 		t.Fail()
@@ -81,15 +83,15 @@ func TestAsyncWait_Timeout(t *testing.T) {
 func TestAsyncWait_Syscall(t *testing.T) {
 	t.Parallel()
 
-	c := async.New()
-	cl := &test.Closed{}
+	aCloser := async.New()
+	tClosed := &test.Closed{}
 
 	time.AfterFunc(time.Second, func() {
 		test.RequireNil(t, syscall.Kill(syscall.Getpid(), syscall.SIGTERM))
 	})
 
-	c.Add(cl.CloseFnc("one", 0), cl.CloseFnc("one", 0))
-	c.Wait(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	aCloser.Add(tClosed.CloseFnc("one", 0), tClosed.CloseFnc("one", 0))
+	aCloser.Wait(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 
-	cl.TestLen(t, 2)
+	tClosed.TestLen(t, 2)
 }

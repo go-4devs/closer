@@ -16,7 +16,6 @@ type closer struct {
 	msg string
 }
 
-// nolint: forbidigo
 func (c *closer) Close() error {
 	fmt.Print(c.msg)
 
@@ -38,43 +37,47 @@ func ExampleCloser_Wait() {
 
 	ctx := context.Background()
 
-	cl := priority.New(
+	pcl := priority.New(
 		priority.WithTimeout(time.Second*5),
 		priority.WithHandleError(func(e error) {
 			fmt.Print(e)
 		}),
 	)
 	db := OpenDB()
-	cl.AddLast(db.Close)
+	pcl.AddLast(db.Close)
 
 	// your consumer events
 	consumer := NewConsumer()
-	cl.AddFirst(consumer.Close)
+	pcl.AddFirst(consumer.Close)
 
-	s := http.Server{}
+	var (
+		srv    http.Server
+		listen net.ListenConfig
+	)
 	// your http listeners
-	listener, _ := net.Listen("tcp", "127.0.0.1:0")
+	listener, _ := listen.Listen(ctx, "tcp", "127.0.0.1:0")
 
 	go func() {
-		if err := s.Serve(listener); err != nil {
-			_ = cl.Close()
+		err := srv.Serve(listener)
+		if err != nil {
+			_ = pcl.Close()
 		}
 	}()
 
-	cl.Add(func() error {
+	pcl.Add(func() error {
 		fmt.Print("stop server. ")
 
-		return s.Shutdown(ctx)
+		return srv.Shutdown(ctx)
 	})
 
-	cl.Wait(ctx, syscall.SIGTERM, syscall.SIGINT)
+	pcl.Wait(ctx, syscall.SIGTERM, syscall.SIGINT)
 	// Output: close consumer. stop server. close db.
 }
 
 func ExampleCloser_Close() {
-	cl := priority.New()
+	pcl := priority.New()
 
-	cl.Add(func() error {
+	pcl.Add(func() error {
 		fmt.Print("normal stop. ")
 
 		return nil
@@ -85,28 +88,28 @@ func ExampleCloser_Close() {
 		return nil
 	})
 
-	cl.AddFirst(func() error {
+	pcl.AddFirst(func() error {
 		fmt.Print("first stop. ")
 
 		return nil
 	})
-	cl.AddLast(func() error {
+	pcl.AddLast(func() error {
 		fmt.Print("last stop. ")
 
 		return nil
 	})
 
-	cl.AddByPriority(priority.First+1, func() error {
+	pcl.AddByPriority(priority.First+1, func() error {
 		fmt.Print("run before first. ")
 
 		return nil
 	})
-	cl.AddByPriority(priority.Normal-1, func() error {
+	pcl.AddByPriority(priority.Normal-1, func() error {
 		fmt.Print("run after normal. ")
 
 		return nil
 	})
 
-	cl.Close()
+	pcl.Close()
 	// Output: run before first. first stop. normal stop. long normal stop. run after normal. last stop.
 }

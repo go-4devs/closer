@@ -19,18 +19,19 @@ func WithHandleError(he func(error)) Option {
 
 // New create new closer with options.
 func New(opts ...Option) *Closer {
-	a := &Closer{}
+	closer := new(Closer)
 
 	for _, o := range opts {
-		o(a)
+		o(closer)
 	}
 
-	return a
+	return closer
 }
 
 // Closer closer.
 type Closer struct {
 	sync.Mutex
+
 	once    sync.Once
 	done    chan struct{}
 	fnc     []func() error
@@ -40,30 +41,22 @@ type Closer struct {
 // Wait when done context or notify signals or close all.
 func (c *Closer) Wait(ctx context.Context, sig ...os.Signal) {
 	go func() {
-		ch := make(chan os.Signal, 1)
+		chs := make(chan os.Signal, 1)
 
 		if len(sig) > 0 {
-			signal.Notify(ch, sig...)
-			defer signal.Stop(ch)
+			signal.Notify(chs, sig...)
+			defer signal.Stop(chs)
 		}
+
 		select {
-		case <-ch:
+		case <-chs:
 		case <-ctx.Done():
 		}
 
 		_ = c.Close()
 	}()
+
 	<-c.wait()
-}
-
-func (c *Closer) wait() chan struct{} {
-	c.Lock()
-	if c.done == nil {
-		c.done = make(chan struct{})
-	}
-	c.Unlock()
-
-	return c.done
 }
 
 // Add close functions.
@@ -77,24 +70,30 @@ func (c *Closer) Add(f ...func() error) {
 func (c *Closer) Close() error {
 	c.once.Do(func() {
 		defer close(c.wait())
+
 		c.Lock()
-		eh := func(error) {}
+
+		errHandler := func(error) {}
 		if c.handler != nil {
-			eh = c.handler
+			errHandler = c.handler
 		}
+
 		funcs := c.fnc
 		c.fnc = nil
 		c.Unlock()
 
 		errs := make(chan error, len(funcs))
+
 		for _, f := range funcs {
 			go func(f func() error) {
 				errs <- f()
 			}(f)
 		}
-		for i := 0; i < cap(errs); i++ {
-			if err := <-errs; err != nil {
-				eh(err)
+
+		for range cap(errs) {
+			err := <-errs
+			if err != nil {
+				errHandler(err)
 			}
 		}
 	})
@@ -106,4 +105,16 @@ func (c *Closer) SetErrHandler(e func(error)) {
 	c.Lock()
 	c.handler = e
 	c.Unlock()
+}
+
+func (c *Closer) wait() chan struct{} {
+	c.Lock()
+
+	if c.done == nil {
+		c.done = make(chan struct{})
+	}
+
+	c.Unlock()
+
+	return c.done
 }

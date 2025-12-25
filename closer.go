@@ -8,8 +8,8 @@ import (
 	"gitoa.ru/go-4devs/closer/priority"
 )
 
-// nolint: gochecknoglobals
-var closer = &priority.Closer{}
+//nolint:gochecknoglobals
+var closer = priority.New()
 
 // SetTimeout before close func.
 func SetTimeout(t time.Duration) {
@@ -42,7 +42,8 @@ func AddFirst(f ...func() error) {
 }
 
 // Close all func.
-// nolint: wrapcheck
+//
+//nolint:wrapcheck
 func Close() error {
 	return closer.Close()
 }

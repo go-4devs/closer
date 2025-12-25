@@ -2,8 +2,8 @@ package routine
 
 import "sync"
 
-// nolint: gochecknoglobals
-var global = &WaitGroup{}
+//nolint:gochecknoglobals
+var global = new(WaitGroup)
 
 // Go run routine and add wait group.
 func Go(fnc func()) {
@@ -49,6 +49,7 @@ func (wg *WaitGroup) Run(fnc ...func()) {
 	for i := range fnc {
 		go func(i int) {
 			defer wg.Done()
+
 			fnc[i]()
 		}(i)
 	}

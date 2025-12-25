@@ -51,7 +51,6 @@ func ExampleWait() {
 func ExampleClose() {
 	closer.Add(func() error {
 		// normal stop.
-
 		return nil
 	}, func() error {
 		time.Sleep(time.Millisecond)
@@ -62,27 +61,24 @@ func ExampleClose() {
 
 	closer.AddFirst(func() error {
 		// first stop.
-
 		return nil
 	})
 	closer.AddLast(func() error {
 		// last stop.
-
 		return nil
 	})
 
 	closer.AddByPriority(priority.First+1, func() error {
 		// run before first.
-
 		return nil
 	})
 
 	closer.AddByPriority(priority.Normal-1, func() error {
 		// run after normal.
-
 		return nil
 	})
 	closer.Close()
+	// Output:
 }
 
 func ExampleWait_cancelContext() {
@@ -91,11 +87,11 @@ func ExampleWait_cancelContext() {
 
 	closer.Add(func() error {
 		// do some close with cancel context
-
 		return nil
 	})
 
 	closer.Wait(ctx)
+	// Output:
 }
 
 func ExampleSetErrHandler() {
@@ -108,6 +104,7 @@ func ExampleSetErrHandler() {
 	})
 
 	closer.Close()
+	// Output:
 }
 
 func ExampleWait_syscall() {
@@ -117,9 +114,9 @@ func ExampleWait_syscall() {
 
 	closer.Add(func() error {
 		// do some close with SIGTERM
-
 		return nil
 	})
 
 	closer.Wait(context.TODO(), syscall.SIGTERM)
+	// Output:
 }

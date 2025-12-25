@@ -19,51 +19,56 @@ func equal(t *testing.T, exp, res int) {
 func TestGo(t *testing.T) {
 	t.Parallel()
 
-	dt := make(map[string]int)
+	data := make(map[string]int)
 
-	var mu sync.Mutex
+	var fmu sync.Mutex
 
 	fnc := func(name string) func() {
 		return func() {
 			time.Sleep(time.Millisecond)
-			mu.Lock()
-			dt[name]++
-			mu.Unlock()
+			fmu.Lock()
+
+			data[name]++
+
+			fmu.Unlock()
 		}
 	}
 
-	equal(t, 0, dt["once"])
+	equal(t, 0, data["once"])
 
 	routine.Go(fnc("once"))
 	routine.Run(fnc("twice"), fnc("twice"))
 	routine.Wait()
 
-	equal(t, 1, dt["once"])
-	equal(t, 2, dt["twice"])
+	equal(t, 1, data["once"])
+	equal(t, 2, data["twice"])
 }
 
 func TestClose(t *testing.T) {
 	t.Parallel()
 
-	dt := make(map[string]int)
+	data := make(map[string]int)
 
-	var mu sync.Mutex
+	var fmu sync.Mutex
 
 	fnc := func(name string) func() {
 		return func() {
 			time.Sleep(time.Millisecond)
-			mu.Lock()
-			dt[name]++
-			mu.Unlock()
+			fmu.Lock()
+
+			data[name]++
+
+			fmu.Unlock()
 		}
 	}
 	routine.Go(fnc("once"))
 	routine.Run(fnc("twice"), fnc("twice"))
 
-	if err := routine.Close(); err != nil {
+	err := routine.Close()
+	if err != nil {
 		t.Fail()
 	}
 
-	equal(t, 1, dt["once"])
-	equal(t, 2, dt["twice"])
+	equal(t, 1, data["once"])
+	equal(t, 2, data["twice"])
 }

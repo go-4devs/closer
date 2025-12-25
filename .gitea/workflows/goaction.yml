@@ -1,0 +1,38 @@
+name: Go Action 
+
+on: [push, pull_request]
+
+jobs:
+  goaction:
+    runs-on: ubuntu-latest # Use a Gitea Actions runner label
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4 # Action to clone the repo
+
+      - name: Set up Go
+        uses: actions/setup-go@v5 # Action to install a specific Go version
+        with:
+          go-version: '1.25.5' # Specify your required Go version
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v8 # Use the golangci-lint action
+        with:
+          version: v2.7.2 # Specify the linter version
+          # Optional: additional arguments
+          args: --verbose
+
+      - name: Run golangci-lint routine
+        uses: golangci/golangci-lint-action@v8 # Use the golangci-lint action
+        with:
+          version: v2.7.2 # Specify the linter version
+          # Optional: additional arguments
+          args: --verbose
+          working-directory: routine
+
+
+      - name: Run go test
+        run: go test ./...
+
+      - name: Run go test routine
+        run: cd ./routine && go test ./...
+

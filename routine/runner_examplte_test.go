@@ -9,6 +9,7 @@ import (
 
 func ExampleGo() {
 	defer routine.Close()
+
 	routine.Go(func() {
 		time.Sleep(time.Microsecond)
 		fmt.Print("do some job")

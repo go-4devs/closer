@@ -36,21 +36,22 @@ func WithTimeout(d time.Duration) Option {
 
 // New create new closer with options.
 func New(opts ...Option) *Closer {
-	a := &Closer{}
+	closer := new(Closer)
 
 	for _, o := range opts {
-		o(a)
+		o(closer)
 	}
 
-	return a
+	return closer
 }
 
 // Closer close by priority.
 type Closer struct {
 	sync.Mutex
+
 	fnc         map[uint8][]func() error
 	priority    prioritySlice
-	sumPriority uint
+	sumPriority int64
 	once        sync.Once
 	handler     func(error)
 	timeout     time.Duration
@@ -74,12 +75,13 @@ func (c *Closer) AddFirst(f ...func() error) {
 }
 
 // AddByPriority add close by priority 255 its close first 0 - last.
-func (c *Closer) AddByPriority(priority uint8, f ...func() error) {
-	if len(f) == 0 {
+func (c *Closer) AddByPriority(priority uint8, fnc ...func() error) {
+	if len(fnc) == 0 {
 		return
 	}
 
 	c.Lock()
+
 	if c.fnc == nil {
 		c.fnc = make(map[uint8][]func() error)
 	}
@@ -87,30 +89,32 @@ func (c *Closer) AddByPriority(priority uint8, f ...func() error) {
 	if len(c.fnc[priority]) == 0 {
 		c.priority = append(c.priority, priority)
 		sort.Sort(c.priority)
-		c.sumPriority += uint(priority)
+		c.sumPriority += int64(priority)
 	}
 
-	c.len += len(f)
-	c.fnc[priority] = append(c.fnc[priority], f...)
+	c.len += len(fnc)
+	c.fnc[priority] = append(c.fnc[priority], fnc...)
 	c.Unlock()
 }
 
 // Wait wait signal or cancel context.
 func (c *Closer) Wait(ctx context.Context, sig ...os.Signal) {
 	go func() {
-		ch := make(chan os.Signal, 1)
+		chs := make(chan os.Signal, 1)
 
 		if len(sig) > 0 {
-			signal.Notify(ch, sig...)
-			defer signal.Stop(ch)
+			signal.Notify(chs, sig...)
+			defer signal.Stop(chs)
 		}
+
 		select {
-		case <-ch:
+		case <-chs:
 		case <-ctx.Done():
 		}
 
 		_ = c.Close()
 	}()
+
 	<-c.wait()
 }
 
@@ -118,16 +122,18 @@ func (c *Closer) Wait(ctx context.Context, sig ...os.Signal) {
 func (c *Closer) Close() error {
 	c.once.Do(func() {
 		start := time.Now()
+
 		c.Lock()
-		eh := func(err error) {
+
+		errHandler := func(err error) {
 			log.Print(err)
 		}
 
 		if c.handler != nil {
-			eh = c.handler
+			errHandler = c.handler
 		}
 
-		w := &wait{
+		waitByPriority := &wait{
 			timeout:  c.timeout,
 			priority: c.sumPriority,
 		}
@@ -135,25 +141,34 @@ func (c *Closer) Close() error {
 		c.fnc = nil
 		c.Unlock()
 		errs := make(chan error, c.len)
+
 		go func() {
 			defer close(c.wait())
-			for i := 0; i < cap(errs); i++ {
-				if err := <-errs; err != nil {
-					eh(err)
+
+			for range cap(errs) {
+				err := <-errs
+				if err != nil {
+					errHandler(err)
 				}
 			}
 		}()
-		for _, p := range c.priority {
-			var wg sync.WaitGroup
-			wg.Add(len(funcs[p]))
-			for _, f := range funcs[p] {
+
+		for _, pri := range c.priority {
+			var wgPri sync.WaitGroup
+
+			wgPri.Add(len(funcs[pri]))
+
+			for _, f := range funcs[pri] {
 				go func(f func() error) {
 					errs <- f()
-					wg.Done()
+
+					wgPri.Done()
 				}(f)
 			}
-			w.done(start, uint(p), &wg)
+
+			waitByPriority.done(start, int64(pri), &wgPri)
 		}
+
 		<-c.wait()
 	})
 
@@ -176,9 +191,11 @@ func (c *Closer) SetErrHandler(e func(error)) {
 
 func (c *Closer) wait() chan struct{} {
 	c.Lock()
+
 	if c.done == nil {
 		c.done = make(chan struct{})
 	}
+
 	c.Unlock()
 
 	return c.done
@@ -186,23 +203,25 @@ func (c *Closer) wait() chan struct{} {
 
 type wait struct {
 	timeout  time.Duration
-	priority uint
+	priority int64
 }
 
-func (w *wait) done(start time.Time, priority uint, wg *sync.WaitGroup) {
+func (w *wait) done(start time.Time, priority int64, priWg *sync.WaitGroup) {
 	done := make(chan struct{})
 
 	go func() {
 		defer close(done)
-		wg.Wait()
+
+		priWg.Wait()
 	}()
+
 	select {
 	case <-w.after(start, priority):
 	case <-done:
 	}
 }
 
-func (w *wait) after(start time.Time, priority uint) <-chan time.Time {
+func (w *wait) after(start time.Time, priority int64) <-chan time.Time {
 	timeout := (w.timeout - time.Since(start)) / time.Duration(w.priority) * time.Duration(priority)
 	w.priority -= priority
 
