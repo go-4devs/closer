@@ -2,39 +2,49 @@ package priority
 
 import (
 	"context"
+	"errors"
 	"log"
 	"os"
-	"os/signal"
-	"sort"
+	"slices"
 	"sync"
 	"time"
+
+	"github.com/go-4devs/closer/internal"
 )
 
-// defaults.
+// First, Normal and Last are close priorities. A higher value runs earlier.
 const (
 	First  = 250
 	Normal = 100
 	Last   = 5
 )
 
-// Option configure priority closer.
+var (
+	// ErrClosed is returned when a func is added after Close has started.
+	ErrClosed = internal.ErrClosed
+
+	// ErrPanic is returned when a close func panics.
+	ErrPanic = internal.ErrPanic
+)
+
+// Option configures a priority Closer.
 type Option func(*Closer)
 
-// WithHandleError configure priority error handler.
+// WithHandleError sets the func called for each close error. The default handler logs the error.
 func WithHandleError(he func(error)) Option {
 	return func(async *Closer) {
 		async.handler = he
 	}
 }
 
-// WithTimeout configure priority error handler.
+// WithTimeout sets the deadline for the whole Close. A non-positive duration means no deadline.
 func WithTimeout(d time.Duration) Option {
 	return func(async *Closer) {
 		async.timeout = d
 	}
 }
 
-// New create new closer with options.
+// New returns a closer that runs funcs by priority.
 func New(opts ...Option) *Closer {
 	closer := new(Closer)
 
@@ -45,42 +55,50 @@ func New(opts ...Option) *Closer {
 	return closer
 }
 
-// Closer close by priority.
+// Closer runs registered funcs once, highest priority first.
 type Closer struct {
-	sync.Mutex
+	mu sync.Mutex
 
 	fnc         map[uint8][]func() error
-	priority    prioritySlice
+	priority    []uint8
 	sumPriority int64
 	once        sync.Once
 	handler     func(error)
 	timeout     time.Duration
 	len         int
 	done        chan struct{}
+	closed      bool
+	closeErr    error
 }
 
-// Add adds closed func by normal priority.
-func (c *Closer) Add(f ...func() error) {
-	c.AddByPriority(Normal, f...)
+// Add registers funcs at normal priority. It returns ErrClosed after Close has started.
+func (c *Closer) Add(f ...func() error) error {
+	return c.AddByPriority(Normal, f...)
 }
 
-// AddLast add closer which execute at the end.
-func (c *Closer) AddLast(f ...func() error) {
-	c.AddByPriority(Last, f...)
+// AddLast registers funcs at Last. It returns ErrClosed after Close has started.
+func (c *Closer) AddLast(f ...func() error) error {
+	return c.AddByPriority(Last, f...)
 }
 
-// AddFirst add closer which execute at the begin.
-func (c *Closer) AddFirst(f ...func() error) {
-	c.AddByPriority(First, f...)
+// AddFirst registers funcs at First. It returns ErrClosed after Close has started.
+func (c *Closer) AddFirst(f ...func() error) error {
+	return c.AddByPriority(First, f...)
 }
 
-// AddByPriority add close by priority 255 its close first 0 - last.
-func (c *Closer) AddByPriority(priority uint8, fnc ...func() error) {
+// AddByPriority registers funcs at priority. A higher value runs first, from 255 down to 0.
+// It returns ErrClosed after Close has started.
+func (c *Closer) AddByPriority(priority uint8, fnc ...func() error) error {
 	if len(fnc) == 0 {
-		return
+		return nil
 	}
 
-	c.Lock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.closed {
+		return ErrClosed
+	}
 
 	if c.fnc == nil {
 		c.fnc = make(map[uint8][]func() error)
@@ -88,42 +106,51 @@ func (c *Closer) AddByPriority(priority uint8, fnc ...func() error) {
 
 	if len(c.fnc[priority]) == 0 {
 		c.priority = append(c.priority, priority)
-		sort.Sort(c.priority)
+		slices.SortFunc(c.priority, func(a, b uint8) int { return int(b) - int(a) })
 		c.sumPriority += int64(priority)
 	}
 
 	c.len += len(fnc)
 	c.fnc[priority] = append(c.fnc[priority], fnc...)
-	c.Unlock()
+
+	return nil
 }
 
-// Wait wait signal or cancel context.
+// Wait waits until ctx is canceled or a signal arrives, then runs Close.
+// Canceling ctx does not skip the funcs.
 func (c *Closer) Wait(ctx context.Context, sig ...os.Signal) {
-	go func() {
-		chs := make(chan os.Signal, 1)
-
-		if len(sig) > 0 {
-			signal.Notify(chs, sig...)
-			defer signal.Stop(chs)
-		}
-
-		select {
-		case <-chs:
-		case <-ctx.Done():
-		}
-
-		_ = c.Close()
-	}()
-
-	<-c.wait()
+	internal.Notify(ctx, c.doneChan(), func() { _ = c.shutdown(ctx) }, sig...)
 }
 
-// Close closes all func by priority.
+// Close runs registered funcs once, highest priority first, and returns their errors.
+// A panic becomes ErrPanic. A later Close returns the same error.
+// After the deadline, errors already sent are kept and a func still running is left out.
 func (c *Closer) Close() error {
+	return c.shutdown(context.Background())
+}
+
+// SetTimeout sets the deadline for the whole Close. A non-positive duration means no deadline.
+func (c *Closer) SetTimeout(t time.Duration) {
+	c.mu.Lock()
+	c.timeout = t
+	c.mu.Unlock()
+}
+
+// SetErrHandler sets the func called for each close error. The default handler logs the error.
+func (c *Closer) SetErrHandler(e func(error)) {
+	c.mu.Lock()
+	c.handler = e
+	c.mu.Unlock()
+}
+
+func (c *Closer) shutdown(ctx context.Context) error {
+	// The context only chooses when Close starts. Its cancel must not skip the funcs.
+	ctx = context.WithoutCancel(ctx)
+
 	c.once.Do(func() {
 		start := time.Now()
 
-		c.Lock()
+		c.mu.Lock()
 
 		errHandler := func(err error) {
 			log.Print(err)
@@ -137,68 +164,61 @@ func (c *Closer) Close() error {
 			timeout:  c.timeout,
 			priority: c.sumPriority,
 		}
+		c.closed = true
 		funcs := c.fnc
+		order := append([]uint8(nil), c.priority...)
+		count := c.len
 		c.fnc = nil
-		c.Unlock()
-		errs := make(chan error, c.len)
+		c.mu.Unlock()
+
+		deadline := ctx
+
+		if waitByPriority.timeout > 0 {
+			var cancel context.CancelFunc
+
+			deadline, cancel = context.WithTimeout(ctx, waitByPriority.timeout)
+			defer cancel()
+		}
+
+		errs := make(chan error, count)
+
+		var got []error
 
 		go func() {
-			defer close(c.wait())
+			defer close(c.doneChan())
 
-			for range cap(errs) {
-				err := <-errs
-				if err != nil {
-					errHandler(err)
-				}
-			}
+			got = internal.ReadErrs(deadline, errs, errHandler)
 		}()
 
-		for _, pri := range c.priority {
+		for _, pri := range order {
+			if deadline.Err() != nil {
+				break
+			}
+
 			var wgPri sync.WaitGroup
 
 			wgPri.Add(len(funcs[pri]))
 
 			for _, f := range funcs[pri] {
 				go func(f func() error) {
-					errs <- f()
+					defer wgPri.Done()
 
-					wgPri.Done()
+					errs <- internal.Recover(f)
 				}(f)
 			}
 
-			waitByPriority.done(start, int64(pri), &wgPri)
+			waitByPriority.done(deadline, start, int64(pri), &wgPri)
 		}
 
-		<-c.wait()
+		<-c.doneChan()
+		c.closeErr = errors.Join(got...)
 	})
 
-	return nil
+	return c.closeErr
 }
 
-// SetTimeout before close func.
-func (c *Closer) SetTimeout(t time.Duration) {
-	c.Lock()
-	c.timeout = t
-	c.Unlock()
-}
-
-// SetErrHandler before close func.
-func (c *Closer) SetErrHandler(e func(error)) {
-	c.Lock()
-	c.handler = e
-	c.Unlock()
-}
-
-func (c *Closer) wait() chan struct{} {
-	c.Lock()
-
-	if c.done == nil {
-		c.done = make(chan struct{})
-	}
-
-	c.Unlock()
-
-	return c.done
+func (c *Closer) doneChan() chan struct{} {
+	return internal.DoneChan(&c.mu, &c.done)
 }
 
 type wait struct {
@@ -206,7 +226,7 @@ type wait struct {
 	priority int64
 }
 
-func (w *wait) done(start time.Time, priority int64, priWg *sync.WaitGroup) {
+func (w *wait) done(ctx context.Context, start time.Time, priority int64, priWg *sync.WaitGroup) {
 	done := make(chan struct{})
 
 	go func() {
@@ -216,12 +236,18 @@ func (w *wait) done(start time.Time, priority int64, priWg *sync.WaitGroup) {
 	}()
 
 	select {
+	case <-ctx.Done():
 	case <-w.after(start, priority):
 	case <-done:
 	}
 }
 
 func (w *wait) after(start time.Time, priority int64) <-chan time.Time {
+	// Priority 0 is a valid bucket and adds nothing to the sum.
+	if w.priority == 0 {
+		return nil
+	}
+
 	timeout := (w.timeout - time.Since(start)) / time.Duration(w.priority) * time.Duration(priority)
 	w.priority -= priority
 
@@ -231,9 +257,3 @@ func (w *wait) after(start time.Time, priority int64) <-chan time.Time {
 
 	return time.After(timeout)
 }
-
-type prioritySlice []uint8
-
-func (p prioritySlice) Len() int           { return len(p) }
-func (p prioritySlice) Less(i, j int) bool { return p[i] > p[j] }
-func (p prioritySlice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }

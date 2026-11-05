@@ -13,7 +13,7 @@ import (
 func ExampleCloser_Close() {
 	acl := async.New()
 
-	acl.Add(func() error {
+	_ = acl.Add(func() error {
 		fmt.Print("do some close")
 
 		return nil
@@ -29,7 +29,7 @@ func ExampleCloser_Wait_cancelContext() {
 	ctx, cancel := context.WithTimeout(context.TODO(), time.Microsecond)
 	defer cancel()
 
-	acl.Add(func() error {
+	_ = acl.Add(func() error {
 		fmt.Print("do some close with cancel context")
 
 		return nil
@@ -44,7 +44,21 @@ func ExampleWithHandleError() {
 		fmt.Printf("logged err:%s", err)
 	}))
 
-	acl.Add(func() error {
+	_ = acl.Add(func() error {
+		return test.ErrClose
+	})
+
+	acl.Close()
+	// Output: logged err:some error
+}
+
+func ExampleCloser_SetErrHandler() {
+	acl := async.New()
+	acl.SetErrHandler(func(err error) {
+		fmt.Print("logged err:", err.Error())
+	})
+
+	_ = acl.Add(func() error {
 		return test.ErrClose
 	})
 
@@ -53,18 +67,31 @@ func ExampleWithHandleError() {
 }
 
 func ExampleCloser_Wait_syscall() {
-	time.AfterFunc(time.Millisecond, func() {
-		_ = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
-	})
-
 	acl := async.New()
 
-	acl.Add(func() error {
+	_ = acl.Add(func() error {
 		fmt.Print("do some close with SIGTERM")
 
 		return nil
 	})
 
+	time.AfterFunc(100*time.Millisecond, func() {
+		_ = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
+	})
+
 	acl.Wait(context.TODO(), syscall.SIGTERM)
 	// Output: do some close with SIGTERM
+}
+
+func ExampleCloser_Add() {
+	acl := async.New()
+	acl.Close()
+
+	err := acl.Add(func() error {
+		fmt.Print("must not run")
+
+		return nil
+	})
+	fmt.Print(err)
+	// Output: closer is closed
 }

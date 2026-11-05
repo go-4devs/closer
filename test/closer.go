@@ -2,6 +2,7 @@ package test
 
 import (
 	"errors"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -15,21 +16,29 @@ type Closed struct {
 }
 
 func (c *Closed) TestLen(t *testing.T, exp int) {
-	if len(c.d) != exp {
-		t.Fail()
+	t.Helper()
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if len(c.d) == exp {
+		return
 	}
+
+	t.Fatalf("got %d (%v), want %d", len(c.d), c.d, exp)
 }
 
 func (c *Closed) TestEqual(t *testing.T, exp []string) {
-	if len(c.d) != len(exp) {
-		t.Fail()
+	t.Helper()
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if slices.Equal(c.d, exp) {
+		return
 	}
 
-	for i := range exp {
-		if exp[i] != c.d[i] {
-			t.Fail()
-		}
-	}
+	t.Fatalf("got %v, want %v", c.d, exp)
 }
 
 func (c *Closed) CloseFnc(name string, sleep time.Duration) func() error {
@@ -55,6 +64,6 @@ func RequireError(t *testing.T, exp, target error) {
 	t.Helper()
 
 	if !errors.Is(exp, target) {
-		t.Fatalf("expected %s, got %s", exp, target)
+		t.Fatalf("expected %s, got %s", target, exp)
 	}
 }

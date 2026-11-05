@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-4devs/closer/priority"
+	"github.com/go-4devs/closer/test"
 )
 
 type closer struct {
@@ -31,10 +32,6 @@ func NewConsumer() io.Closer {
 }
 
 func ExampleCloser_Wait() {
-	time.AfterFunc(time.Second/2, func() {
-		_ = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
-	})
-
 	ctx := context.Background()
 
 	pcl := priority.New(
@@ -44,11 +41,11 @@ func ExampleCloser_Wait() {
 		}),
 	)
 	db := OpenDB()
-	pcl.AddLast(db.Close)
+	_ = pcl.AddLast(db.Close)
 
 	// your consumer events
 	consumer := NewConsumer()
-	pcl.AddFirst(consumer.Close)
+	_ = pcl.AddFirst(consumer.Close)
 
 	var (
 		srv    http.Server
@@ -64,10 +61,14 @@ func ExampleCloser_Wait() {
 		}
 	}()
 
-	pcl.Add(func() error {
+	_ = pcl.Add(func() error {
 		fmt.Print("stop server. ")
 
 		return srv.Shutdown(ctx)
+	})
+
+	time.AfterFunc(100*time.Millisecond, func() {
+		_ = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
 	})
 
 	pcl.Wait(ctx, syscall.SIGTERM, syscall.SIGINT)
@@ -77,34 +78,37 @@ func ExampleCloser_Wait() {
 func ExampleCloser_Close() {
 	pcl := priority.New()
 
-	pcl.Add(func() error {
+	normalDone := make(chan struct{})
+
+	_ = pcl.Add(func() error {
 		fmt.Print("normal stop. ")
+		close(normalDone)
 
 		return nil
 	}, func() error {
-		time.Sleep(time.Millisecond)
+		<-normalDone
 		fmt.Print("long normal stop. ")
 
 		return nil
 	})
 
-	pcl.AddFirst(func() error {
+	_ = pcl.AddFirst(func() error {
 		fmt.Print("first stop. ")
 
 		return nil
 	})
-	pcl.AddLast(func() error {
+	_ = pcl.AddLast(func() error {
 		fmt.Print("last stop. ")
 
 		return nil
 	})
 
-	pcl.AddByPriority(priority.First+1, func() error {
+	_ = pcl.AddByPriority(priority.First+1, func() error {
 		fmt.Print("run before first. ")
 
 		return nil
 	})
-	pcl.AddByPriority(priority.Normal-1, func() error {
+	_ = pcl.AddByPriority(priority.Normal-1, func() error {
 		fmt.Print("run after normal. ")
 
 		return nil
@@ -112,4 +116,47 @@ func ExampleCloser_Close() {
 
 	pcl.Close()
 	// Output: run before first. first stop. normal stop. long normal stop. run after normal. last stop.
+}
+
+func ExampleCloser_Wait_cancelContext() {
+	pcl := priority.New()
+
+	ctx, cancel := context.WithTimeout(context.TODO(), time.Microsecond)
+	defer cancel()
+
+	_ = pcl.Add(func() error {
+		fmt.Print("do some close with cancel context")
+
+		return nil
+	})
+
+	pcl.Wait(ctx)
+	// Output: do some close with cancel context
+}
+
+func ExampleCloser_SetErrHandler() {
+	pcl := priority.New()
+	pcl.SetErrHandler(func(err error) {
+		fmt.Print("logged err:", err.Error())
+	})
+
+	_ = pcl.Add(func() error {
+		return test.ErrClose
+	})
+
+	pcl.Close()
+	// Output: logged err:some error
+}
+
+func ExampleCloser_Add() {
+	pcl := priority.New()
+	pcl.Close()
+
+	err := pcl.Add(func() error {
+		fmt.Print("must not run")
+
+		return nil
+	})
+	fmt.Print(err)
+	// Output: closer is closed
 }

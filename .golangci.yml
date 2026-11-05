@@ -1,9 +1,16 @@
 version: "2"
 linters:
   default: all
+  enable:
+    - exhaustruct_v5
+    - gomodguard_v2
   disable:
   # deprecated
     - wsl
+    - exhaustruct
+    - gomodguard
+    # The public API is a process-wide singleton.
+    - gochecknoglobals
   settings:
     depguard:
       rules:
@@ -25,6 +32,10 @@ linters:
       line-length: 140
     misspell:
       locale: US
+    # Root re-exports these errors. Wrapping them adds no text.
+    wrapcheck:
+      ignore-package-globs:
+        - github.com/go-4devs/closer/priority
   exclusions:
     generated: lax
     presets:

@@ -8,47 +8,55 @@ import (
 	"github.com/go-4devs/closer/priority"
 )
 
-//nolint:gochecknoglobals
 var closer = priority.New()
 
-// SetTimeout before close func.
+// SetTimeout sets the deadline for the whole Close. A non-positive duration means no deadline.
 func SetTimeout(t time.Duration) {
 	closer.SetTimeout(t)
 }
 
-// SetErrHandler before close func.
+// SetErrHandler sets the func called for each close error. The default handler logs the error.
 func SetErrHandler(eh func(error)) {
 	closer.SetErrHandler(eh)
 }
 
-// Add add closed func.
-func Add(f ...func() error) {
-	closer.Add(f...)
+var (
+	// ErrClosed is returned when a func is added after Close has started.
+	ErrClosed = priority.ErrClosed
+
+	// ErrPanic is returned when a close func panics.
+	ErrPanic = priority.ErrPanic
+)
+
+// Add registers funcs at normal priority. It returns ErrClosed after Close has started.
+func Add(f ...func() error) error {
+	return closer.Add(f...)
 }
 
-// AddByPriority add close by priority 255 its close first 0 - last.
-func AddByPriority(priority uint8, f ...func() error) {
-	closer.AddByPriority(priority, f...)
+// AddByPriority registers funcs at priority. A higher value runs first, from 255 down to 0.
+// It returns ErrClosed after Close has started.
+func AddByPriority(priority uint8, f ...func() error) error {
+	return closer.AddByPriority(priority, f...)
 }
 
-// AddLast add closer which execute at the end.
-func AddLast(f ...func() error) {
-	closer.AddLast(f...)
+// AddLast registers funcs near the end of Close. It returns ErrClosed after Close has started.
+func AddLast(f ...func() error) error {
+	return closer.AddLast(f...)
 }
 
-// AddFirst add closer which execute at the begin.
-func AddFirst(f ...func() error) {
-	closer.AddFirst(f...)
+// AddFirst registers funcs near the start of Close. It returns ErrClosed after Close has started.
+func AddFirst(f ...func() error) error {
+	return closer.AddFirst(f...)
 }
 
-// Close all func.
-//
-//nolint:wrapcheck
+// Close runs registered funcs once, highest priority first, and returns their errors.
+// A later Close returns the same error.
 func Close() error {
 	return closer.Close()
 }
 
-// Wait cancel ctx or signal.
+// Wait waits until ctx is canceled or a signal arrives, then runs Close.
+// Canceling ctx does not skip the funcs.
 func Wait(ctx context.Context, sig ...os.Signal) {
 	closer.Wait(ctx, sig...)
 }
