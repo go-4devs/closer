@@ -27,8 +27,18 @@ jobs:
           args: --verbose
           working-directory: routine
 
+      - name: Run golangci-lint inflight
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.15.0
+          args: --verbose
+          working-directory: inflight
+
       - name: Run go test
         run: go test -race ./...
 
       - name: Run go test routine
         run: cd ./routine && go test -race ./...
+
+      - name: Run go test inflight
+        run: cd ./inflight && go test -race ./...
