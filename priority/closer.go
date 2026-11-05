@@ -110,7 +110,7 @@ func (c *Closer) AddByPriority(priority uint8, fnc ...func() error) error {
 
 // Wait wait signal or cancel context.
 func (c *Closer) Wait(ctx context.Context, sig ...os.Signal) {
-	go func() {
+	go func(ctx context.Context) {
 		chs := make(chan os.Signal, 1)
 
 		if len(sig) > 0 {
@@ -123,14 +123,35 @@ func (c *Closer) Wait(ctx context.Context, sig ...os.Signal) {
 		case <-ctx.Done():
 		}
 
-		_ = c.Close()
-	}()
+		_ = c.shutdown(ctx)
+	}(ctx)
 
 	<-c.wait()
 }
 
 // Close closes all func by priority.
 func (c *Closer) Close() error {
+	return c.shutdown(context.Background())
+}
+
+// SetTimeout before close func.
+func (c *Closer) SetTimeout(t time.Duration) {
+	c.Lock()
+	c.timeout = t
+	c.Unlock()
+}
+
+// SetErrHandler before close func.
+func (c *Closer) SetErrHandler(e func(error)) {
+	c.Lock()
+	c.handler = e
+	c.Unlock()
+}
+
+func (c *Closer) shutdown(ctx context.Context) error {
+	// The context only chooses when Close starts. Its cancel must not skip the funcs.
+	ctx = context.WithoutCancel(ctx)
+
 	c.once.Do(func() {
 		start := time.Now()
 
@@ -151,18 +172,20 @@ func (c *Closer) Close() error {
 		c.closed = true
 		funcs := c.fnc
 		order := append(prioritySlice(nil), c.priority...)
-		n := c.len
+		count := c.len
 		c.fnc = nil
 		c.Unlock()
 
-		ctx := context.Background()
+		deadline := ctx
+
 		if waitByPriority.timeout > 0 {
 			var cancel context.CancelFunc
-			ctx, cancel = context.WithTimeout(ctx, waitByPriority.timeout)
+
+			deadline, cancel = context.WithTimeout(ctx, waitByPriority.timeout)
 			defer cancel()
 		}
 
-		errs := make(chan error, n)
+		errs := make(chan error, count)
 
 		go func() {
 			defer close(c.wait())
@@ -170,7 +193,7 @@ func (c *Closer) Close() error {
 			// A stuck func never sends, so the deadline has to unblock the wait.
 			for range cap(errs) {
 				select {
-				case <-ctx.Done():
+				case <-deadline.Done():
 					return
 				case err := <-errs:
 					if err != nil {
@@ -181,7 +204,7 @@ func (c *Closer) Close() error {
 		}()
 
 		for _, pri := range order {
-			if ctx.Err() != nil {
+			if deadline.Err() != nil {
 				break
 			}
 
@@ -197,27 +220,13 @@ func (c *Closer) Close() error {
 				}(f)
 			}
 
-			waitByPriority.done(ctx, start, int64(pri), &wgPri)
+			waitByPriority.done(deadline, start, int64(pri), &wgPri)
 		}
 
 		<-c.wait()
 	})
 
 	return nil
-}
-
-// SetTimeout before close func.
-func (c *Closer) SetTimeout(t time.Duration) {
-	c.Lock()
-	c.timeout = t
-	c.Unlock()
-}
-
-// SetErrHandler before close func.
-func (c *Closer) SetErrHandler(e func(error)) {
-	c.Lock()
-	c.handler = e
-	c.Unlock()
 }
 
 func (c *Closer) wait() chan struct{} {

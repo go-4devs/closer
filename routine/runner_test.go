@@ -81,6 +81,7 @@ func TestGoDuringWait(t *testing.T) {
 	wg := new(routine.WaitGroup)
 	for range 2000 {
 		go wg.Go(func() {})
+
 		wg.Wait()
 	}
 }

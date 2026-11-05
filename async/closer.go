@@ -65,8 +65,8 @@ func (c *Closer) Wait(ctx context.Context, sig ...os.Signal) {
 }
 
 // Add close functions.
-func (c *Closer) Add(f ...func() error) error {
-	if len(f) == 0 {
+func (c *Closer) Add(funcs ...func() error) error {
+	if len(funcs) == 0 {
 		return nil
 	}
 
@@ -77,7 +77,7 @@ func (c *Closer) Add(f ...func() error) error {
 		return ErrClosed
 	}
 
-	c.fnc = append(c.fnc, f...)
+	c.fnc = append(c.fnc, funcs...)
 
 	return nil
 }

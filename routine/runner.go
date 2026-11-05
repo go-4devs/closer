@@ -26,10 +26,10 @@ func Wait() {
 
 // WaitGroup run func and wait when done.
 type WaitGroup struct {
+	sync.WaitGroup
+
 	mu      sync.Mutex
 	waiting int
-
-	sync.WaitGroup
 }
 
 // Close wait all routines and implement Closer.

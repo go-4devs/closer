@@ -13,7 +13,7 @@ import (
 func ExampleCloser_Close() {
 	acl := async.New()
 
-	acl.Add(func() error {
+	_ = acl.Add(func() error {
 		fmt.Print("do some close")
 
 		return nil
@@ -29,7 +29,7 @@ func ExampleCloser_Wait_cancelContext() {
 	ctx, cancel := context.WithTimeout(context.TODO(), time.Microsecond)
 	defer cancel()
 
-	acl.Add(func() error {
+	_ = acl.Add(func() error {
 		fmt.Print("do some close with cancel context")
 
 		return nil
@@ -44,7 +44,7 @@ func ExampleWithHandleError() {
 		fmt.Printf("logged err:%s", err)
 	}))
 
-	acl.Add(func() error {
+	_ = acl.Add(func() error {
 		return test.ErrClose
 	})
 
@@ -59,7 +59,7 @@ func ExampleCloser_Wait_syscall() {
 
 	acl := async.New()
 
-	acl.Add(func() error {
+	_ = acl.Add(func() error {
 		fmt.Print("do some close with SIGTERM")
 
 		return nil

@@ -18,7 +18,7 @@ func TestAsyncClose(t *testing.T) {
 	var a1closer async.Closer
 
 	closedFn := new(test.Closed)
-	a1closer.Add(closedFn.CloseFnc("one", 0))
+	test.RequireNil(t, a1closer.Add(closedFn.CloseFnc("one", 0)))
 	test.RequireNil(t, a1closer.Close())
 	closedFn.TestLen(t, 1)
 
@@ -31,21 +31,21 @@ func TestAsyncClose(t *testing.T) {
 			t.Fatalf("expect: %s, got:%s", test.ErrClose, err)
 		}
 	}))
-	asCloser.Add(closedFn.CloseFnc("two", 0), func() error {
+	test.RequireNil(t, asCloser.Add(closedFn.CloseFnc("two", 0), func() error {
 		test.RequireNil(t, closedFn.CloseFnc("two", 0)())
 
 		return test.ErrClose
-	})
+	}))
 	test.RequireNil(t, asCloser.Close())
 	closedFn.TestLen(t, 3)
 
 	var a2closer async.Closer
 
 	closedFn = &test.Closed{}
-	a2closer.Add(
+	test.RequireNil(t, a2closer.Add(
 		closedFn.CloseFnc("one", time.Millisecond/2),
 		closedFn.CloseFnc("two", time.Microsecond),
-		closedFn.CloseFnc("three", time.Millisecond/5))
+		closedFn.CloseFnc("three", time.Millisecond/5)))
 	test.RequireNil(t, a2closer.Close())
 
 	closedFn.TestLen(t, 3)
@@ -59,23 +59,23 @@ func TestAsyncWait_Timeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Microsecond)
 	defer cancel()
 
-	var cnt int32
+	var cnt atomic.Int32
 
 	go func() {
 		aCloser.Wait(ctx)
-		atomic.AddInt32(&cnt, 1)
+		cnt.Add(1)
 	}()
 
 	closeFn := func() error {
-		atomic.AddInt32(&cnt, 1)
+		cnt.Add(1)
 
 		return nil
 	}
 
-	aCloser.Add(closeFn)
+	test.RequireNil(t, aCloser.Add(closeFn))
 	aCloser.Wait(context.Background())
 
-	if atomic.LoadInt32(&cnt) != 1 {
+	if cnt.Load() != 1 {
 		t.Fail()
 	}
 }
@@ -90,7 +90,7 @@ func TestAsyncWait_Syscall(t *testing.T) {
 		test.RequireNil(t, syscall.Kill(syscall.Getpid(), syscall.SIGTERM))
 	})
 
-	aCloser.Add(tClosed.CloseFnc("one", 0), tClosed.CloseFnc("one", 0))
+	test.RequireNil(t, aCloser.Add(tClosed.CloseFnc("one", 0), tClosed.CloseFnc("one", 0)))
 	aCloser.Wait(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 
 	tClosed.TestLen(t, 2)
@@ -103,6 +103,7 @@ func TestAsyncAddAfterClose(t *testing.T) {
 	test.RequireNil(t, aCloser.Close())
 
 	ran := false
+
 	err := aCloser.Add(func() error {
 		ran = true
 

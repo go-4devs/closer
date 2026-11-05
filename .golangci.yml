@@ -1,9 +1,14 @@
 version: "2"
 linters:
   default: all
+  enable:
+    - exhaustruct_v5
+    - gomodguard_v2
   disable:
   # deprecated
     - wsl
+    - exhaustruct
+    - gomodguard
     # The public API is a process-wide singleton.
     - gochecknoglobals
   settings:

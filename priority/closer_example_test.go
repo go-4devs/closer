@@ -44,11 +44,11 @@ func ExampleCloser_Wait() {
 		}),
 	)
 	db := OpenDB()
-	pcl.AddLast(db.Close)
+	_ = pcl.AddLast(db.Close)
 
 	// your consumer events
 	consumer := NewConsumer()
-	pcl.AddFirst(consumer.Close)
+	_ = pcl.AddFirst(consumer.Close)
 
 	var (
 		srv    http.Server
@@ -64,7 +64,7 @@ func ExampleCloser_Wait() {
 		}
 	}()
 
-	pcl.Add(func() error {
+	_ = pcl.Add(func() error {
 		fmt.Print("stop server. ")
 
 		return srv.Shutdown(ctx)
@@ -77,7 +77,7 @@ func ExampleCloser_Wait() {
 func ExampleCloser_Close() {
 	pcl := priority.New()
 
-	pcl.Add(func() error {
+	_ = pcl.Add(func() error {
 		fmt.Print("normal stop. ")
 
 		return nil
@@ -88,23 +88,23 @@ func ExampleCloser_Close() {
 		return nil
 	})
 
-	pcl.AddFirst(func() error {
+	_ = pcl.AddFirst(func() error {
 		fmt.Print("first stop. ")
 
 		return nil
 	})
-	pcl.AddLast(func() error {
+	_ = pcl.AddLast(func() error {
 		fmt.Print("last stop. ")
 
 		return nil
 	})
 
-	pcl.AddByPriority(priority.First+1, func() error {
+	_ = pcl.AddByPriority(priority.First+1, func() error {
 		fmt.Print("run before first. ")
 
 		return nil
 	})
-	pcl.AddByPriority(priority.Normal-1, func() error {
+	_ = pcl.AddByPriority(priority.Normal-1, func() error {
 		fmt.Print("run after normal. ")
 
 		return nil
