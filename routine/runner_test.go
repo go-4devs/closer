@@ -36,9 +36,10 @@ func TestGo(t *testing.T) {
 
 	equal(t, 0, data["once"])
 
-	routine.Go(fnc("once"))
-	routine.Run(fnc("twice"), fnc("twice"))
-	routine.Wait()
+	wg := new(routine.WaitGroup)
+	wg.Go(fnc("once"))
+	wg.Run(fnc("twice"), fnc("twice"))
+	wg.Wait()
 
 	equal(t, 1, data["once"])
 	equal(t, 2, data["twice"])
@@ -61,14 +62,25 @@ func TestClose(t *testing.T) {
 			fmu.Unlock()
 		}
 	}
-	routine.Go(fnc("once"))
-	routine.Run(fnc("twice"), fnc("twice"))
+	wg := new(routine.WaitGroup)
+	wg.Go(fnc("once"))
+	wg.Run(fnc("twice"), fnc("twice"))
 
-	err := routine.Close()
+	err := wg.Close()
 	if err != nil {
 		t.Fail()
 	}
 
 	equal(t, 1, data["once"])
 	equal(t, 2, data["twice"])
+}
+
+func TestGoDuringWait(t *testing.T) {
+	t.Parallel()
+
+	wg := new(routine.WaitGroup)
+	for range 2000 {
+		go wg.Go(func() {})
+		wg.Wait()
+	}
 }

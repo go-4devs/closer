@@ -26,6 +26,9 @@ func Wait() {
 
 // WaitGroup run func and wait when done.
 type WaitGroup struct {
+	mu      sync.Mutex
+	waiting int
+
 	sync.WaitGroup
 }
 
@@ -43,7 +46,20 @@ func (wg *WaitGroup) Go(fnc func()) {
 
 // Run functions in routine and add wait group.
 func (wg *WaitGroup) Run(fnc ...func()) {
+	if len(fnc) == 0 {
+		return
+	}
+
+	wg.mu.Lock()
+	// Add while Wait is in progress panics sync.WaitGroup.
+	if wg.waiting > 0 {
+		wg.mu.Unlock()
+
+		return
+	}
+
 	wg.Add(len(fnc))
+	wg.mu.Unlock()
 
 	for i := range fnc {
 		go func(i int) {
@@ -52,4 +68,17 @@ func (wg *WaitGroup) Run(fnc ...func()) {
 			fnc[i]()
 		}(i)
 	}
+}
+
+// Wait wait all go routines.
+func (wg *WaitGroup) Wait() {
+	wg.mu.Lock()
+	wg.waiting++
+	wg.mu.Unlock()
+
+	wg.WaitGroup.Wait()
+
+	wg.mu.Lock()
+	wg.waiting--
+	wg.mu.Unlock()
 }
