@@ -69,7 +69,35 @@ func TestPriority_Wait_Timeout(t *testing.T) {
 		test.RequireNil(t, syscall.Kill(syscall.Getpid(), syscall.SIGTERM))
 	})
 	pcl.Wait(context.Background(), syscall.SIGTERM)
-	closed.TestEqual(t, []string{"one", "last", "first"})
+	// "first" sleeps past the timeout, so shutdown must not wait for it.
+	closed.TestEqual(t, []string{"one", "last"})
+}
+
+func TestPriority_Close_Timeout(t *testing.T) {
+	t.Parallel()
+
+	closed := &test.Closed{}
+	pcl := priority.New(priority.WithTimeout(30 * time.Millisecond))
+	pcl.AddByPriority(priority.First, func() error {
+		<-make(chan struct{})
+
+		return nil
+	})
+	pcl.Add(closed.CloseFnc("one", 0))
+
+	done := make(chan struct{})
+	go func() {
+		_ = pcl.Close()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("Close blocked past timeout")
+	}
+
+	closed.TestEqual(t, []string{"one"})
 }
 
 func TestPriority_Wait(t *testing.T) {

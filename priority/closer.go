@@ -140,20 +140,37 @@ func (c *Closer) Close() error {
 		funcs := c.fnc
 		c.fnc = nil
 		c.Unlock()
+
+		ctx := context.Background()
+		if waitByPriority.timeout > 0 {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, waitByPriority.timeout)
+			defer cancel()
+		}
+
 		errs := make(chan error, c.len)
 
 		go func() {
 			defer close(c.wait())
 
+			// A stuck func never sends, so the deadline has to unblock the wait.
 			for range cap(errs) {
-				err := <-errs
-				if err != nil {
-					errHandler(err)
+				select {
+				case <-ctx.Done():
+					return
+				case err := <-errs:
+					if err != nil {
+						errHandler(err)
+					}
 				}
 			}
 		}()
 
 		for _, pri := range c.priority {
+			if ctx.Err() != nil {
+				break
+			}
+
 			var wgPri sync.WaitGroup
 
 			wgPri.Add(len(funcs[pri]))
@@ -166,7 +183,7 @@ func (c *Closer) Close() error {
 				}(f)
 			}
 
-			waitByPriority.done(start, int64(pri), &wgPri)
+			waitByPriority.done(ctx, start, int64(pri), &wgPri)
 		}
 
 		<-c.wait()
@@ -206,7 +223,7 @@ type wait struct {
 	priority int64
 }
 
-func (w *wait) done(start time.Time, priority int64, priWg *sync.WaitGroup) {
+func (w *wait) done(ctx context.Context, start time.Time, priority int64, priWg *sync.WaitGroup) {
 	done := make(chan struct{})
 
 	go func() {
@@ -216,6 +233,7 @@ func (w *wait) done(start time.Time, priority int64, priWg *sync.WaitGroup) {
 	}()
 
 	select {
+	case <-ctx.Done():
 	case <-w.after(start, priority):
 	case <-done:
 	}
