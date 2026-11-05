@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"os"
-	"os/signal"
 	"sync"
 
 	"github.com/go-4devs/closer/internal"
@@ -41,7 +40,7 @@ func New(opts ...Option) *Closer {
 
 // Closer closer.
 type Closer struct {
-	sync.Mutex
+	mu sync.Mutex
 
 	once     sync.Once
 	done     chan struct{}
@@ -53,23 +52,7 @@ type Closer struct {
 
 // Wait when done context or notify signals or close all.
 func (c *Closer) Wait(ctx context.Context, sig ...os.Signal) {
-	go func() {
-		chs := make(chan os.Signal, 1)
-
-		if len(sig) > 0 {
-			signal.Notify(chs, sig...)
-			defer signal.Stop(chs)
-		}
-
-		select {
-		case <-chs:
-		case <-ctx.Done():
-		}
-
-		_ = c.Close()
-	}()
-
-	<-c.wait()
+	internal.Notify(ctx, c.doneChan(), func() { _ = c.Close() }, sig...)
 }
 
 // Add close functions.
@@ -78,8 +61,8 @@ func (c *Closer) Add(funcs ...func() error) error {
 		return nil
 	}
 
-	c.Lock()
-	defer c.Unlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	if c.closed {
 		return ErrClosed
@@ -93,9 +76,9 @@ func (c *Closer) Add(funcs ...func() error) error {
 // Close close all closers async.
 func (c *Closer) Close() error {
 	c.once.Do(func() {
-		defer close(c.wait())
+		defer close(c.doneChan())
 
-		c.Lock()
+		c.mu.Lock()
 
 		errHandler := func(error) {}
 		if c.handler != nil {
@@ -105,7 +88,7 @@ func (c *Closer) Close() error {
 		c.closed = true
 		funcs := c.fnc
 		c.fnc = nil
-		c.Unlock()
+		c.mu.Unlock()
 
 		errs := make(chan error, len(funcs))
 
@@ -132,19 +115,11 @@ func (c *Closer) Close() error {
 }
 
 func (c *Closer) SetErrHandler(e func(error)) {
-	c.Lock()
+	c.mu.Lock()
 	c.handler = e
-	c.Unlock()
+	c.mu.Unlock()
 }
 
-func (c *Closer) wait() chan struct{} {
-	c.Lock()
-
-	if c.done == nil {
-		c.done = make(chan struct{})
-	}
-
-	c.Unlock()
-
-	return c.done
+func (c *Closer) doneChan() chan struct{} {
+	return internal.DoneChan(&c.mu, &c.done)
 }

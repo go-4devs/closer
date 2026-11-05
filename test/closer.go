@@ -2,6 +2,7 @@ package test
 
 import (
 	"errors"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -24,18 +25,16 @@ func (c *Closed) TestLen(t *testing.T, exp int) {
 }
 
 func (c *Closed) TestEqual(t *testing.T, exp []string) {
+	t.Helper()
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if len(c.d) != len(exp) {
-		t.Fail()
+	if slices.Equal(c.d, exp) {
+		return
 	}
 
-	for i := range exp {
-		if exp[i] != c.d[i] {
-			t.Fail()
-		}
-	}
+	t.Fatalf("got %v, want %v", c.d, exp)
 }
 
 func (c *Closed) CloseFnc(name string, sleep time.Duration) func() error {

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log"
 	"os"
-	"os/signal"
 	"sort"
 	"sync"
 	"time"
@@ -58,7 +57,7 @@ func New(opts ...Option) *Closer {
 
 // Closer close by priority.
 type Closer struct {
-	sync.Mutex
+	mu sync.Mutex
 
 	fnc         map[uint8][]func() error
 	priority    prioritySlice
@@ -93,8 +92,8 @@ func (c *Closer) AddByPriority(priority uint8, fnc ...func() error) error {
 		return nil
 	}
 
-	c.Lock()
-	defer c.Unlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	if c.closed {
 		return ErrClosed
@@ -118,23 +117,7 @@ func (c *Closer) AddByPriority(priority uint8, fnc ...func() error) error {
 
 // Wait wait signal or cancel context.
 func (c *Closer) Wait(ctx context.Context, sig ...os.Signal) {
-	go func(ctx context.Context) {
-		chs := make(chan os.Signal, 1)
-
-		if len(sig) > 0 {
-			signal.Notify(chs, sig...)
-			defer signal.Stop(chs)
-		}
-
-		select {
-		case <-chs:
-		case <-ctx.Done():
-		}
-
-		_ = c.shutdown(ctx)
-	}(ctx)
-
-	<-c.wait()
+	internal.Notify(ctx, c.doneChan(), func() { _ = c.shutdown(ctx) }, sig...)
 }
 
 // Close closes all func by priority.
@@ -144,16 +127,16 @@ func (c *Closer) Close() error {
 
 // SetTimeout before close func.
 func (c *Closer) SetTimeout(t time.Duration) {
-	c.Lock()
+	c.mu.Lock()
 	c.timeout = t
-	c.Unlock()
+	c.mu.Unlock()
 }
 
 // SetErrHandler before close func.
 func (c *Closer) SetErrHandler(e func(error)) {
-	c.Lock()
+	c.mu.Lock()
 	c.handler = e
-	c.Unlock()
+	c.mu.Unlock()
 }
 
 func (c *Closer) shutdown(ctx context.Context) error {
@@ -163,7 +146,7 @@ func (c *Closer) shutdown(ctx context.Context) error {
 	c.once.Do(func() {
 		start := time.Now()
 
-		c.Lock()
+		c.mu.Lock()
 
 		errHandler := func(err error) {
 			log.Print(err)
@@ -182,7 +165,7 @@ func (c *Closer) shutdown(ctx context.Context) error {
 		order := append(prioritySlice(nil), c.priority...)
 		count := c.len
 		c.fnc = nil
-		c.Unlock()
+		c.mu.Unlock()
 
 		deadline := ctx
 
@@ -198,7 +181,7 @@ func (c *Closer) shutdown(ctx context.Context) error {
 		var got []error
 
 		go func() {
-			defer close(c.wait())
+			defer close(c.doneChan())
 
 			// A stuck func never sends, so the deadline has to unblock the wait.
 			for range cap(errs) {
@@ -234,23 +217,15 @@ func (c *Closer) shutdown(ctx context.Context) error {
 			waitByPriority.done(deadline, start, int64(pri), &wgPri)
 		}
 
-		<-c.wait()
+		<-c.doneChan()
 		c.closeErr = errors.Join(got...)
 	})
 
 	return c.closeErr
 }
 
-func (c *Closer) wait() chan struct{} {
-	c.Lock()
-
-	if c.done == nil {
-		c.done = make(chan struct{})
-	}
-
-	c.Unlock()
-
-	return c.done
+func (c *Closer) doneChan() chan struct{} {
+	return internal.DoneChan(&c.mu, &c.done)
 }
 
 type wait struct {

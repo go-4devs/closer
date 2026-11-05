@@ -3,7 +3,6 @@ package async_test
 import (
 	"context"
 	"errors"
-	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -59,24 +58,18 @@ func TestAsyncWait_Timeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Microsecond)
 	defer cancel()
 
-	var cnt atomic.Int32
+	ran := 0
 
-	go func() {
-		aCloser.Wait(ctx)
-		cnt.Add(1)
-	}()
-
-	closeFn := func() error {
-		cnt.Add(1)
+	test.RequireNil(t, aCloser.Add(func() error {
+		ran++
 
 		return nil
-	}
+	}))
 
-	test.RequireNil(t, aCloser.Add(closeFn))
-	aCloser.Wait(context.Background())
+	aCloser.Wait(ctx)
 
-	if cnt.Load() != 1 {
-		t.Fail()
+	if ran != 1 {
+		t.Fatalf("close func ran %d times", ran)
 	}
 }
 
