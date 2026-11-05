@@ -8,11 +8,21 @@
 
 `Wait` blocks until the context is canceled or a signal arrives, then runs `Close`. Canceling the context does not skip the funcs. A non-positive timeout means no deadline.
 
-The root package is one process-wide closer. `priority` is the same API on your own value, with funcs ordered by priority. `async` runs every func at the same time. `routine` tracks goroutines and drops new ones while `Wait` is in progress.
+The root package is one process-wide closer. `priority` is the same API on your own value, with funcs ordered by priority. `async` runs every func at the same time. `routine` tracks goroutines and drops new ones while `Wait` is in progress. `inflight` tracks calls already inside `Do`. `Wait` returns when they finish. If that context ends first, the calls are canceled and `Wait` returns without waiting for them.
 
 ```go
 closer.Add(func() error {
     return db.Close()
 })
 closer.Wait(ctx, syscall.SIGTERM)
+```
+
+```go
+group := inflight.New()
+
+err := group.Do(r.Context(), func(ctx context.Context) error {
+    return handle(ctx)
+})
+
+err = group.Wait(shutdown)
 ```
