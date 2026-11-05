@@ -67,16 +67,16 @@ func ExampleCloser_SetErrHandler() {
 }
 
 func ExampleCloser_Wait_syscall() {
-	time.AfterFunc(time.Millisecond, func() {
-		_ = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
-	})
-
 	acl := async.New()
 
 	_ = acl.Add(func() error {
 		fmt.Print("do some close with SIGTERM")
 
 		return nil
+	})
+
+	time.AfterFunc(100*time.Millisecond, func() {
+		_ = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
 	})
 
 	acl.Wait(context.TODO(), syscall.SIGTERM)

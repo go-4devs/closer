@@ -32,10 +32,6 @@ func NewConsumer() io.Closer {
 }
 
 func ExampleCloser_Wait() {
-	time.AfterFunc(time.Second/2, func() {
-		_ = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
-	})
-
 	ctx := context.Background()
 
 	pcl := priority.New(
@@ -71,6 +67,10 @@ func ExampleCloser_Wait() {
 		return srv.Shutdown(ctx)
 	})
 
+	time.AfterFunc(100*time.Millisecond, func() {
+		_ = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
+	})
+
 	pcl.Wait(ctx, syscall.SIGTERM, syscall.SIGINT)
 	// Output: close consumer. stop server. close db.
 }
@@ -78,12 +78,15 @@ func ExampleCloser_Wait() {
 func ExampleCloser_Close() {
 	pcl := priority.New()
 
+	normalDone := make(chan struct{})
+
 	_ = pcl.Add(func() error {
 		fmt.Print("normal stop. ")
+		close(normalDone)
 
 		return nil
 	}, func() error {
-		time.Sleep(time.Millisecond)
+		<-normalDone
 		fmt.Print("long normal stop. ")
 
 		return nil

@@ -21,13 +21,14 @@ func DoneChan(mu *sync.Mutex, done *chan struct{}) chan struct{} {
 
 // Notify waits until ctx is canceled or a signal arrives, runs closeFn, and blocks until done is closed.
 func Notify(ctx context.Context, done <-chan struct{}, closeFn func(), sig ...os.Signal) {
-	go func(ctx context.Context) {
-		chs := make(chan os.Signal, 1)
+	chs := make(chan os.Signal, 1)
+	if len(sig) > 0 {
+		// Arm the signal before waiting, so a signal sent after Wait starts is not lost.
+		signal.Notify(chs, sig...)
+	}
 
-		if len(sig) > 0 {
-			signal.Notify(chs, sig...)
-			defer signal.Stop(chs)
-		}
+	go func(ctx context.Context) {
+		defer signal.Stop(chs)
 
 		select {
 		case <-chs:

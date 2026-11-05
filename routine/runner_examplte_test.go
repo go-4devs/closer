@@ -21,11 +21,14 @@ func ExampleGo() {
 func ExampleRun() {
 	defer routine.Close()
 
+	printed := make(chan struct{})
+
 	routine.Run(func() {
-		time.Sleep(time.Microsecond)
+		<-printed
 		fmt.Print("do some job. ")
 	}, func() {
 		fmt.Print("fast job in goroutine. ")
+		close(printed)
 	})
 
 	// Output: fast job in goroutine. do some job.

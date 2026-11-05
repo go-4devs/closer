@@ -71,9 +71,10 @@ func TestPriority_Wait_Timeout(t *testing.T) {
 		return test.ErrClose
 	}))
 
-	time.AfterFunc(time.Second/3, func() {
+	time.AfterFunc(100*time.Millisecond, func() {
 		test.RequireNil(t, syscall.Kill(syscall.Getpid(), syscall.SIGTERM))
 	})
+
 	pcl.Wait(context.Background(), syscall.SIGTERM)
 	// "first" sleeps past the timeout, so shutdown must not wait for it.
 	closed.TestEqual(t, []string{nameOne, nameLast})

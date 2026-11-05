@@ -79,11 +79,12 @@ func TestAsyncWait_Syscall(t *testing.T) {
 	aCloser := async.New()
 	tClosed := &test.Closed{}
 
-	time.AfterFunc(time.Second, func() {
+	test.RequireNil(t, aCloser.Add(tClosed.CloseFnc("one", 0), tClosed.CloseFnc("one", 0)))
+
+	time.AfterFunc(100*time.Millisecond, func() {
 		test.RequireNil(t, syscall.Kill(syscall.Getpid(), syscall.SIGTERM))
 	})
 
-	test.RequireNil(t, aCloser.Add(tClosed.CloseFnc("one", 0), tClosed.CloseFnc("one", 0)))
 	aCloser.Wait(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 
 	tClosed.TestLen(t, 2)
