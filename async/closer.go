@@ -2,10 +2,14 @@ package async
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/signal"
 	"sync"
 )
+
+// ErrClosed is returned when a func is added after Close has started.
+var ErrClosed = errors.New("closer is closed")
 
 // Option configure async closer.
 type Option func(*Closer)
@@ -36,6 +40,7 @@ type Closer struct {
 	done    chan struct{}
 	fnc     []func() error
 	handler func(error)
+	closed  bool
 }
 
 // Wait when done context or notify signals or close all.
@@ -60,10 +65,21 @@ func (c *Closer) Wait(ctx context.Context, sig ...os.Signal) {
 }
 
 // Add close functions.
-func (c *Closer) Add(f ...func() error) {
+func (c *Closer) Add(f ...func() error) error {
+	if len(f) == 0 {
+		return nil
+	}
+
 	c.Lock()
+	defer c.Unlock()
+
+	if c.closed {
+		return ErrClosed
+	}
+
 	c.fnc = append(c.fnc, f...)
-	c.Unlock()
+
+	return nil
 }
 
 // Close close all closers async.
@@ -78,6 +94,7 @@ func (c *Closer) Close() error {
 			errHandler = c.handler
 		}
 
+		c.closed = true
 		funcs := c.fnc
 		c.fnc = nil
 		c.Unlock()

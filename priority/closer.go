@@ -2,6 +2,7 @@ package priority
 
 import (
 	"context"
+	"errors"
 	"log"
 	"os"
 	"os/signal"
@@ -16,6 +17,9 @@ const (
 	Normal = 100
 	Last   = 5
 )
+
+// ErrClosed is returned when a func is added after Close has started.
+var ErrClosed = errors.New("closer is closed")
 
 // Option configure priority closer.
 type Option func(*Closer)
@@ -57,30 +61,36 @@ type Closer struct {
 	timeout     time.Duration
 	len         int
 	done        chan struct{}
+	closed      bool
 }
 
 // Add adds closed func by normal priority.
-func (c *Closer) Add(f ...func() error) {
-	c.AddByPriority(Normal, f...)
+func (c *Closer) Add(f ...func() error) error {
+	return c.AddByPriority(Normal, f...)
 }
 
 // AddLast add closer which execute at the end.
-func (c *Closer) AddLast(f ...func() error) {
-	c.AddByPriority(Last, f...)
+func (c *Closer) AddLast(f ...func() error) error {
+	return c.AddByPriority(Last, f...)
 }
 
 // AddFirst add closer which execute at the begin.
-func (c *Closer) AddFirst(f ...func() error) {
-	c.AddByPriority(First, f...)
+func (c *Closer) AddFirst(f ...func() error) error {
+	return c.AddByPriority(First, f...)
 }
 
 // AddByPriority add close by priority 255 its close first 0 - last.
-func (c *Closer) AddByPriority(priority uint8, fnc ...func() error) {
+func (c *Closer) AddByPriority(priority uint8, fnc ...func() error) error {
 	if len(fnc) == 0 {
-		return
+		return nil
 	}
 
 	c.Lock()
+	defer c.Unlock()
+
+	if c.closed {
+		return ErrClosed
+	}
 
 	if c.fnc == nil {
 		c.fnc = make(map[uint8][]func() error)
@@ -94,7 +104,8 @@ func (c *Closer) AddByPriority(priority uint8, fnc ...func() error) {
 
 	c.len += len(fnc)
 	c.fnc[priority] = append(c.fnc[priority], fnc...)
-	c.Unlock()
+
+	return nil
 }
 
 // Wait wait signal or cancel context.
@@ -137,7 +148,10 @@ func (c *Closer) Close() error {
 			timeout:  c.timeout,
 			priority: c.sumPriority,
 		}
+		c.closed = true
 		funcs := c.fnc
+		order := append(prioritySlice(nil), c.priority...)
+		n := c.len
 		c.fnc = nil
 		c.Unlock()
 
@@ -148,7 +162,7 @@ func (c *Closer) Close() error {
 			defer cancel()
 		}
 
-		errs := make(chan error, c.len)
+		errs := make(chan error, n)
 
 		go func() {
 			defer close(c.wait())
@@ -166,7 +180,7 @@ func (c *Closer) Close() error {
 			}
 		}()
 
-		for _, pri := range c.priority {
+		for _, pri := range order {
 			if ctx.Err() != nil {
 				break
 			}

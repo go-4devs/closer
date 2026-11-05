@@ -95,3 +95,24 @@ func TestAsyncWait_Syscall(t *testing.T) {
 
 	tClosed.TestLen(t, 2)
 }
+
+func TestAsyncAddAfterClose(t *testing.T) {
+	t.Parallel()
+
+	aCloser := async.New()
+	test.RequireNil(t, aCloser.Close())
+
+	ran := false
+	err := aCloser.Add(func() error {
+		ran = true
+
+		return nil
+	})
+	if !errors.Is(err, async.ErrClosed) {
+		t.Fatalf("expected closed, got %v", err)
+	}
+
+	if ran {
+		t.Fatal("closer added after Close ran")
+	}
+}

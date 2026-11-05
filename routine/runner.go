@@ -2,7 +2,6 @@ package routine
 
 import "sync"
 
-//nolint:gochecknoglobals
 var global = new(WaitGroup)
 
 // Go run routine and add wait group.

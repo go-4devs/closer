@@ -114,3 +114,73 @@ func TestPriority_Wait(t *testing.T) {
 	})
 	pcl.Wait(ctx)
 }
+
+func TestPriority_AddAfterClose(t *testing.T) {
+	t.Parallel()
+
+	pcl := priority.New()
+	started := make(chan struct{})
+	hold := make(chan struct{})
+	test.RequireNil(t, pcl.Add(func() error {
+		close(started)
+		<-hold
+
+		return nil
+	}))
+
+	done := make(chan struct{})
+	go func() {
+		_ = pcl.Close()
+		close(done)
+	}()
+	<-started
+
+	ran := false
+	err := pcl.Add(func() error {
+		ran = true
+
+		return nil
+	})
+	test.RequireError(t, err, priority.ErrClosed)
+
+	close(hold)
+	<-done
+
+	if ran {
+		t.Fatal("closer added during Close ran")
+	}
+
+	err = pcl.Add(func() error {
+		ran = true
+
+		return nil
+	})
+	test.RequireError(t, err, priority.ErrClosed)
+
+	if ran {
+		t.Fatal("closer added after Close ran")
+	}
+}
+
+func TestPriority_AddCloseRace(t *testing.T) {
+	t.Parallel()
+
+	for range 20 {
+		pcl := priority.New()
+		hold := make(chan struct{})
+		test.RequireNil(t, pcl.Add(func() error {
+			<-hold
+
+			return nil
+		}))
+
+		done := make(chan struct{})
+		go func() {
+			_ = pcl.Close()
+			close(done)
+		}()
+		_ = pcl.AddByPriority(1, func() error { return nil })
+		close(hold)
+		<-done
+	}
+}

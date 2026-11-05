@@ -4,6 +4,8 @@ linters:
   disable:
   # deprecated
     - wsl
+    # The public API is a process-wide singleton.
+    - gochecknoglobals
   settings:
     depguard:
       rules:
