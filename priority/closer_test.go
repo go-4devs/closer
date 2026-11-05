@@ -32,6 +32,23 @@ func TestPriority_Close(t *testing.T) {
 	closed.TestEqual(t, []string{"first", "one", "one", "one", "last"})
 }
 
+func TestPriority_Zero(t *testing.T) {
+	t.Parallel()
+
+	onlyZero := priority.New()
+	closedZero := &test.Closed{}
+	onlyZero.AddByPriority(0, closedZero.CloseFnc("zero", 0))
+	test.RequireNil(t, onlyZero.Close())
+	closedZero.TestEqual(t, []string{"zero"})
+
+	pcl := priority.New(priority.WithTimeout(time.Second))
+	closed := &test.Closed{}
+	pcl.Add(closed.CloseFnc("one", 0))
+	pcl.AddByPriority(0, closed.CloseFnc("zero", 0))
+	test.RequireNil(t, pcl.Close())
+	closed.TestEqual(t, []string{"one", "zero"})
+}
+
 func TestPriority_Wait_Timeout(t *testing.T) {
 	t.Parallel()
 

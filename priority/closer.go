@@ -222,6 +222,11 @@ func (w *wait) done(start time.Time, priority int64, priWg *sync.WaitGroup) {
 }
 
 func (w *wait) after(start time.Time, priority int64) <-chan time.Time {
+	// Priority 0 is a valid bucket and adds nothing to the sum.
+	if w.priority == 0 {
+		return nil
+	}
+
 	timeout := (w.timeout - time.Since(start)) / time.Duration(w.priority) * time.Duration(priority)
 	w.priority -= priority
 
