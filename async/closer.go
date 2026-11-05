@@ -17,17 +17,17 @@ var (
 	ErrPanic = internal.ErrPanic
 )
 
-// Option configure async closer.
+// Option configures an async Closer.
 type Option func(*Closer)
 
-// WithHandleError configure async error handler.
+// WithHandleError sets the func called for each close error. Without it, Close still returns the errors.
 func WithHandleError(he func(error)) Option {
 	return func(async *Closer) {
 		async.handler = he
 	}
 }
 
-// New create new closer with options.
+// New returns a closer that runs funcs in parallel.
 func New(opts ...Option) *Closer {
 	closer := new(Closer)
 
@@ -38,7 +38,7 @@ func New(opts ...Option) *Closer {
 	return closer
 }
 
-// Closer closer.
+// Closer runs registered funcs once, all at the same time.
 type Closer struct {
 	mu sync.Mutex
 
@@ -50,12 +50,12 @@ type Closer struct {
 	closeErr error
 }
 
-// Wait when done context or notify signals or close all.
+// Wait waits until ctx is canceled or a signal arrives, then runs Close.
 func (c *Closer) Wait(ctx context.Context, sig ...os.Signal) {
 	internal.Notify(ctx, c.doneChan(), func() { _ = c.Close() }, sig...)
 }
 
-// Add close functions.
+// Add registers funcs. It returns ErrClosed after Close has started.
 func (c *Closer) Add(funcs ...func() error) error {
 	if len(funcs) == 0 {
 		return nil
@@ -73,7 +73,8 @@ func (c *Closer) Add(funcs ...func() error) error {
 	return nil
 }
 
-// Close close all closers async.
+// Close runs registered funcs once, in parallel, and returns their errors.
+// A panic becomes ErrPanic. A later Close returns the same error.
 func (c *Closer) Close() error {
 	c.once.Do(func() {
 		defer close(c.doneChan())
@@ -114,6 +115,7 @@ func (c *Closer) Close() error {
 	return c.closeErr
 }
 
+// SetErrHandler sets the func called for each close error.
 func (c *Closer) SetErrHandler(e func(error)) {
 	c.mu.Lock()
 	c.handler = e

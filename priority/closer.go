@@ -12,7 +12,7 @@ import (
 	"github.com/go-4devs/closer/internal"
 )
 
-// defaults.
+// First, Normal and Last are close priorities. A higher value runs earlier.
 const (
 	First  = 250
 	Normal = 100
@@ -27,24 +27,24 @@ var (
 	ErrPanic = internal.ErrPanic
 )
 
-// Option configure priority closer.
+// Option configures a priority Closer.
 type Option func(*Closer)
 
-// WithHandleError configure priority error handler.
+// WithHandleError sets the func called for each close error. The default handler logs the error.
 func WithHandleError(he func(error)) Option {
 	return func(async *Closer) {
 		async.handler = he
 	}
 }
 
-// WithTimeout configure priority error handler.
+// WithTimeout sets the deadline for the whole Close. A non-positive duration means no deadline.
 func WithTimeout(d time.Duration) Option {
 	return func(async *Closer) {
 		async.timeout = d
 	}
 }
 
-// New create new closer with options.
+// New returns a closer that runs funcs by priority.
 func New(opts ...Option) *Closer {
 	closer := new(Closer)
 
@@ -55,7 +55,7 @@ func New(opts ...Option) *Closer {
 	return closer
 }
 
-// Closer close by priority.
+// Closer runs registered funcs once, highest priority first.
 type Closer struct {
 	mu sync.Mutex
 
@@ -71,22 +71,23 @@ type Closer struct {
 	closeErr    error
 }
 
-// Add adds closed func by normal priority.
+// Add registers funcs at normal priority. It returns ErrClosed after Close has started.
 func (c *Closer) Add(f ...func() error) error {
 	return c.AddByPriority(Normal, f...)
 }
 
-// AddLast add closer which execute at the end.
+// AddLast registers funcs at Last. It returns ErrClosed after Close has started.
 func (c *Closer) AddLast(f ...func() error) error {
 	return c.AddByPriority(Last, f...)
 }
 
-// AddFirst add closer which execute at the begin.
+// AddFirst registers funcs at First. It returns ErrClosed after Close has started.
 func (c *Closer) AddFirst(f ...func() error) error {
 	return c.AddByPriority(First, f...)
 }
 
-// AddByPriority add close by priority 255 its close first 0 - last.
+// AddByPriority registers funcs at priority. A higher value runs first, from 255 down to 0.
+// It returns ErrClosed after Close has started.
 func (c *Closer) AddByPriority(priority uint8, fnc ...func() error) error {
 	if len(fnc) == 0 {
 		return nil
@@ -115,24 +116,26 @@ func (c *Closer) AddByPriority(priority uint8, fnc ...func() error) error {
 	return nil
 }
 
-// Wait wait signal or cancel context.
+// Wait waits until ctx is canceled or a signal arrives, then runs Close.
+// Canceling ctx does not skip the funcs.
 func (c *Closer) Wait(ctx context.Context, sig ...os.Signal) {
 	internal.Notify(ctx, c.doneChan(), func() { _ = c.shutdown(ctx) }, sig...)
 }
 
-// Close closes all func by priority.
+// Close runs registered funcs once, highest priority first, and returns their errors.
+// A panic becomes ErrPanic. A later Close returns the same error.
 func (c *Closer) Close() error {
 	return c.shutdown(context.Background())
 }
 
-// SetTimeout before close func.
+// SetTimeout sets the deadline for the whole Close. A non-positive duration means no deadline.
 func (c *Closer) SetTimeout(t time.Duration) {
 	c.mu.Lock()
 	c.timeout = t
 	c.mu.Unlock()
 }
 
-// SetErrHandler before close func.
+// SetErrHandler sets the func called for each close error. The default handler logs the error.
 func (c *Closer) SetErrHandler(e func(error)) {
 	c.mu.Lock()
 	c.handler = e

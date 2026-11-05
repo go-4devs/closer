@@ -5,6 +5,8 @@ import (
 	"time"
 )
 
+// Shutdown returns a func that calls fnc with a timeout.
+// A non-positive timeout uses context.Background and sets no deadline.
 func Shutdown(fnc func(context.Context) error, timeout time.Duration) func() error {
 	return func() error {
 		// A non-positive timeout is no deadline. WithTimeout(0) is already canceled.

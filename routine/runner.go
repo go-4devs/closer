@@ -4,27 +4,27 @@ import "sync"
 
 var global = new(WaitGroup)
 
-// Go run routine and add wait group.
+// Go runs fnc in a goroutine. A call during Wait is ignored.
 func Go(fnc func()) {
 	global.Go(fnc)
 }
 
-// Run run routines and add wait group.
+// Run runs each func in its own goroutine. Calls during Wait are ignored.
 func Run(fnc ...func()) {
 	global.Run(fnc...)
 }
 
-// Close global routines.
+// Close waits for funcs started on the global group and returns nil.
 func Close() error {
 	return global.Close()
 }
 
-// Wait wait all go routines.
+// Wait blocks until funcs started on the global group have returned.
 func Wait() {
 	global.Wait()
 }
 
-// WaitGroup run func and wait when done.
+// WaitGroup runs funcs and waits for them. It can be used again after Wait returns.
 type WaitGroup struct {
 	sync.WaitGroup
 
@@ -32,19 +32,19 @@ type WaitGroup struct {
 	waiting int
 }
 
-// Close wait all routines and implement Closer.
+// Close waits for funcs started before it and returns nil.
 func (wg *WaitGroup) Close() error {
 	wg.Wait()
 
 	return nil
 }
 
-// Go add wait group to routines.
+// Go runs fnc in a goroutine. A call during Wait is ignored.
 func (wg *WaitGroup) Go(fnc func()) {
 	wg.Run(fnc)
 }
 
-// Run functions in routine and add wait group.
+// Run runs each func in its own goroutine. Calls during Wait are ignored.
 func (wg *WaitGroup) Run(fnc ...func()) {
 	if len(fnc) == 0 {
 		return
@@ -70,7 +70,7 @@ func (wg *WaitGroup) Run(fnc ...func()) {
 	}
 }
 
-// Wait wait all go routines.
+// Wait blocks until funcs started before this call have returned.
 func (wg *WaitGroup) Wait() {
 	wg.mu.Lock()
 	wg.waiting++
