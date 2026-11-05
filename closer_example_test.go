@@ -3,7 +3,6 @@ package closer_test
 import (
 	"context"
 	"fmt"
-	"log"
 	"syscall"
 	"time"
 
@@ -24,6 +23,11 @@ func ExampleWait() {
 		fmt.Print("do some close. ")
 
 		return nil
+	}, func() error {
+		time.Sleep(time.Millisecond)
+		// long normal stop.
+
+		return nil
 	})
 
 	_ = closer.AddFirst(func() error {
@@ -38,36 +42,6 @@ func ExampleWait() {
 		return nil
 	})
 
-	_ = closer.AddByPriority(priority.Last-1, func() error {
-		return test.ErrClose
-	})
-
-	closer.Wait(ctx)
-	// Output:
-	// close http server for example. do some close. close db for example.
-	// logged err:some error
-}
-
-func ExampleClose() {
-	_ = closer.Add(func() error {
-		// normal stop.
-		return nil
-	}, func() error {
-		time.Sleep(time.Millisecond)
-		// long normal stop.
-
-		return nil
-	})
-
-	_ = closer.AddFirst(func() error {
-		// first stop.
-		return nil
-	})
-	_ = closer.AddLast(func() error {
-		// last stop.
-		return nil
-	})
-
 	_ = closer.AddByPriority(priority.First+1, func() error {
 		// run before first.
 		return nil
@@ -78,46 +52,20 @@ func ExampleClose() {
 		return nil
 	})
 
-	closer.Close()
-	// Output:
-}
-
-func ExampleWait_cancelContext() {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Microsecond)
-	defer cancel()
-
-	_ = closer.Add(func() error {
-		// do some close with cancel context
-		return nil
-	})
-
-	closer.Wait(ctx)
-	// Output:
-}
-
-func ExampleSetErrHandler() {
-	closer.SetErrHandler(func(err error) {
-		log.Print("logged err:", err.Error())
-	})
-
-	_ = closer.Add(func() error {
+	_ = closer.AddByPriority(priority.Last-1, func() error {
 		return test.ErrClose
 	})
 
-	closer.Close()
-	// Output:
-}
+	closer.Wait(ctx, syscall.SIGTERM)
 
-func ExampleWait_syscall() {
-	time.AfterFunc(time.Millisecond, func() {
-		_ = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
-	})
+	err := closer.Add(func() error {
+		fmt.Print("must not run")
 
-	_ = closer.Add(func() error {
-		// do some close with SIGTERM
 		return nil
 	})
-
-	closer.Wait(context.TODO(), syscall.SIGTERM)
+	fmt.Print("\n", err)
 	// Output:
+	// close http server for example. do some close. close db for example.
+	// logged err:some error
+	// closer is closed
 }
