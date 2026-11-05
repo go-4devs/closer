@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"gitoa.ru/go-4devs/closer/priority"
+	"github.com/go-4devs/closer/priority"
 )
 
 type closer struct {

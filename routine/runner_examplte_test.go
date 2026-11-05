@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"gitoa.ru/go-4devs/closer/routine"
+	"github.com/go-4devs/closer/routine"
 )
 
 func ExampleGo() {

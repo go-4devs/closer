@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"gitoa.ru/go-4devs/closer/routine"
+	"github.com/go-4devs/closer/routine"
 )
 
 func equal(t *testing.T, exp, res int) {

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"gitoa.ru/go-4devs/closer/priority"
-	"gitoa.ru/go-4devs/closer/test"
+	"github.com/go-4devs/closer/priority"
+	"github.com/go-4devs/closer/test"
 )
 
 func TestPriority_Close(t *testing.T) {
