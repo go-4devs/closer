@@ -6,8 +6,8 @@ import (
 	"syscall"
 	"time"
 
-	"gitoa.ru/go-4devs/closer/async"
-	"gitoa.ru/go-4devs/closer/test"
+	"github.com/go-4devs/closer/async"
+	"github.com/go-4devs/closer/test"
 )
 
 func ExampleCloser_Close() {

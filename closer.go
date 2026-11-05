@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	"gitoa.ru/go-4devs/closer/priority"
+	"github.com/go-4devs/closer/priority"
 )
 
 //nolint:gochecknoglobals

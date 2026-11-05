@@ -10,7 +10,7 @@ linters:
         main:
           allow:
             - $gostd
-            - gitoa.ru
+            - github.com/go-4devs
     dupl:
       threshold: 100
     funlen:

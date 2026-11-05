@@ -1,3 +1,3 @@
-module gitoa.ru/go-4devs/closer/routine
+module github.com/go-4devs/closer/routine
 
 go 1.22

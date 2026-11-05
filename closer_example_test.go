@@ -7,9 +7,9 @@ import (
 	"syscall"
 	"time"
 
-	"gitoa.ru/go-4devs/closer"
-	"gitoa.ru/go-4devs/closer/priority"
-	"gitoa.ru/go-4devs/closer/test"
+	"github.com/go-4devs/closer"
+	"github.com/go-4devs/closer/priority"
+	"github.com/go-4devs/closer/test"
 )
 
 func ExampleWait() {
