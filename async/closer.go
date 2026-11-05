@@ -3,6 +3,7 @@ package async
 import (
 	"context"
 	"errors"
+	"log"
 	"os"
 	"sync"
 
@@ -20,7 +21,7 @@ var (
 // Option configures an async Closer.
 type Option func(*Closer)
 
-// WithHandleError sets the func called for each close error. Without it, Close still returns the errors.
+// WithHandleError sets the func called for each close error. The default handler logs the error.
 func WithHandleError(he func(error)) Option {
 	return func(async *Closer) {
 		async.handler = he
@@ -81,7 +82,9 @@ func (c *Closer) Close() error {
 
 		c.mu.Lock()
 
-		errHandler := func(error) {}
+		errHandler := func(err error) {
+			log.Print(err)
+		}
 		if c.handler != nil {
 			errHandler = c.handler
 		}
@@ -115,7 +118,7 @@ func (c *Closer) Close() error {
 	return c.closeErr
 }
 
-// SetErrHandler sets the func called for each close error.
+// SetErrHandler sets the func called for each close error. The default handler logs the error.
 func (c *Closer) SetErrHandler(e func(error)) {
 	c.mu.Lock()
 	c.handler = e
