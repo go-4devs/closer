@@ -16,12 +16,16 @@ type Closed struct {
 }
 
 func (c *Closed) TestLen(t *testing.T, exp int) {
+	t.Helper()
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if len(c.d) != exp {
-		t.Fail()
+	if len(c.d) == exp {
+		return
 	}
+
+	t.Fatalf("got %d (%v), want %d", len(c.d), c.d, exp)
 }
 
 func (c *Closed) TestEqual(t *testing.T, exp []string) {

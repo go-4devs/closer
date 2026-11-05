@@ -26,8 +26,7 @@ func Wait() {
 
 // WaitGroup runs funcs and waits for them. It can be used again after Wait returns.
 type WaitGroup struct {
-	sync.WaitGroup
-
+	group   sync.WaitGroup
 	mu      sync.Mutex
 	waiting int
 }
@@ -58,12 +57,12 @@ func (wg *WaitGroup) Run(fnc ...func()) {
 		return
 	}
 
-	wg.Add(len(fnc))
+	wg.group.Add(len(fnc))
 	wg.mu.Unlock()
 
 	for i := range fnc {
 		go func(i int) {
-			defer wg.Done()
+			defer wg.group.Done()
 
 			fnc[i]()
 		}(i)
@@ -76,7 +75,7 @@ func (wg *WaitGroup) Wait() {
 	wg.waiting++
 	wg.mu.Unlock()
 
-	wg.WaitGroup.Wait()
+	wg.group.Wait()
 
 	wg.mu.Lock()
 	wg.waiting--

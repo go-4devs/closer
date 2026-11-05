@@ -217,6 +217,93 @@ func TestPriority_AddAfterClose(t *testing.T) {
 	}
 }
 
+func TestPriority_Close_TimeoutKeepsSentErrors(t *testing.T) {
+	t.Parallel()
+
+	// One pass can still read the buffered error by luck. Repeat so a dropped error fails the test.
+	for range 12 {
+		closeErr, seen := closeWithStuck(t)
+		test.RequireError(t, closeErr, test.ErrClose)
+
+		if seen != 2 {
+			t.Fatalf("seen %d, want 2", seen)
+		}
+	}
+}
+
+func closeWithStuck(t *testing.T) (error, int) {
+	t.Helper()
+
+	const finished = 2
+
+	release := make(chan struct{})
+	started := make(chan struct{})
+	arrived := make(chan struct{}, finished)
+	seen := 0
+	pcl := priority.New(
+		priority.WithTimeout(15*time.Millisecond),
+		priority.WithHandleError(func(err error) {
+			test.RequireError(t, err, test.ErrClose)
+
+			seen++
+
+			if seen == 1 {
+				close(started)
+
+				<-release
+			}
+		}),
+	)
+	funcs := make([]func() error, 0, finished+1)
+
+	for range finished {
+		funcs = append(funcs, func() error {
+			arrived <- struct{}{}
+
+			return test.ErrClose
+		})
+	}
+
+	funcs = append(funcs, func() error {
+		<-make(chan struct{})
+
+		return nil
+	})
+	test.RequireNil(t, pcl.Add(funcs...))
+
+	done := make(chan error, 1)
+
+	go func() {
+		done <- pcl.Close()
+	}()
+
+	waitChan(t, arrived, finished)
+	waitChan(t, started, 1)
+	time.Sleep(50 * time.Millisecond)
+	close(release)
+
+	select {
+	case err := <-done:
+		return err, seen
+	case <-time.After(time.Second):
+		t.Fatal("stuck func blocked Close")
+
+		return nil, seen
+	}
+}
+
+func waitChan(t *testing.T, ch <-chan struct{}, n int) {
+	t.Helper()
+
+	for range n {
+		select {
+		case <-ch:
+		case <-time.After(time.Second):
+			t.Fatal("close func did not finish")
+		}
+	}
+}
+
 func TestPriority_AddCloseRace(t *testing.T) {
 	t.Parallel()
 

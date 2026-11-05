@@ -124,6 +124,7 @@ func (c *Closer) Wait(ctx context.Context, sig ...os.Signal) {
 
 // Close runs registered funcs once, highest priority first, and returns their errors.
 // A panic becomes ErrPanic. A later Close returns the same error.
+// After the deadline, errors already sent are kept and a func still running is left out.
 func (c *Closer) Close() error {
 	return c.shutdown(context.Background())
 }
@@ -186,18 +187,7 @@ func (c *Closer) shutdown(ctx context.Context) error {
 		go func() {
 			defer close(c.doneChan())
 
-			// A stuck func never sends, so the deadline has to unblock the wait.
-			for range cap(errs) {
-				select {
-				case <-deadline.Done():
-					return
-				case err := <-errs:
-					if err != nil {
-						errHandler(err)
-						got = append(got, err)
-					}
-				}
-			}
+			got = readErrs(deadline, errs, errHandler)
 		}()
 
 		for _, pri := range order {
@@ -229,6 +219,44 @@ func (c *Closer) shutdown(ctx context.Context) error {
 
 func (c *Closer) doneChan() chan struct{} {
 	return internal.DoneChan(&c.mu, &c.done)
+}
+
+// readErrs keeps errors already sent. A stuck func sends nothing, so a finished deadline ends the wait.
+// shortcut: an error sent after this returns is dropped, upgrade if Close must include funcs that finish later.
+func readErrs(deadline context.Context, errs <-chan error, handle func(error)) []error {
+	var got []error
+
+	for range cap(errs) {
+		select {
+		case <-deadline.Done():
+			return drainErrs(got, errs, handle)
+		case err := <-errs:
+			got = keepErr(got, err, handle)
+		}
+	}
+
+	return got
+}
+
+func drainErrs(got []error, errs <-chan error, handle func(error)) []error {
+	for {
+		select {
+		case err := <-errs:
+			got = keepErr(got, err, handle)
+		default:
+			return got
+		}
+	}
+}
+
+func keepErr(got []error, err error, handle func(error)) []error {
+	if err == nil {
+		return got
+	}
+
+	handle(err)
+
+	return append(got, err)
 }
 
 type wait struct {
