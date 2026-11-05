@@ -2,6 +2,7 @@ package priority
 
 import (
 	"context"
+	"errors"
 	"log"
 	"os"
 	"os/signal"
@@ -68,6 +69,7 @@ type Closer struct {
 	len         int
 	done        chan struct{}
 	closed      bool
+	closeErr    error
 }
 
 // Add adds closed func by normal priority.
@@ -193,6 +195,8 @@ func (c *Closer) shutdown(ctx context.Context) error {
 
 		errs := make(chan error, count)
 
+		var got []error
+
 		go func() {
 			defer close(c.wait())
 
@@ -204,6 +208,7 @@ func (c *Closer) shutdown(ctx context.Context) error {
 				case err := <-errs:
 					if err != nil {
 						errHandler(err)
+						got = append(got, err)
 					}
 				}
 			}
@@ -230,9 +235,10 @@ func (c *Closer) shutdown(ctx context.Context) error {
 		}
 
 		<-c.wait()
+		c.closeErr = errors.Join(got...)
 	})
 
-	return nil
+	return c.closeErr
 }
 
 func (c *Closer) wait() chan struct{} {

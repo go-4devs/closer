@@ -36,7 +36,7 @@ func TestAsyncClose(t *testing.T) {
 
 		return test.ErrClose
 	}))
-	test.RequireNil(t, asCloser.Close())
+	test.RequireError(t, asCloser.Close(), test.ErrClose)
 	closedFn.TestLen(t, 3)
 
 	var a2closer async.Closer

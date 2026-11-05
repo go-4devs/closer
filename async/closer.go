@@ -2,6 +2,7 @@ package async
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/signal"
 	"sync"
@@ -42,11 +43,12 @@ func New(opts ...Option) *Closer {
 type Closer struct {
 	sync.Mutex
 
-	once    sync.Once
-	done    chan struct{}
-	fnc     []func() error
-	handler func(error)
-	closed  bool
+	once     sync.Once
+	done     chan struct{}
+	fnc      []func() error
+	handler  func(error)
+	closed   bool
+	closeErr error
 }
 
 // Wait when done context or notify signals or close all.
@@ -113,15 +115,20 @@ func (c *Closer) Close() error {
 			}(f)
 		}
 
+		var got []error
+
 		for range cap(errs) {
 			err := <-errs
 			if err != nil {
 				errHandler(err)
+				got = append(got, err)
 			}
 		}
+
+		c.closeErr = errors.Join(got...)
 	})
 
-	return nil
+	return c.closeErr
 }
 
 func (c *Closer) SetErrHandler(e func(error)) {

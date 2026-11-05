@@ -128,8 +128,10 @@ func TestPriority_Close_Panic(t *testing.T) {
 
 	done := make(chan struct{})
 
+	var closeErr error
+
 	go func() {
-		_ = pcl.Close()
+		closeErr = pcl.Close()
 
 		close(done)
 	}()
@@ -140,6 +142,7 @@ func TestPriority_Close_Panic(t *testing.T) {
 		t.Fatal("Close blocked after panic")
 	}
 
+	test.RequireError(t, closeErr, priority.ErrPanic)
 	test.RequireError(t, panicErr, priority.ErrPanic)
 
 	if !ran {
