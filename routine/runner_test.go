@@ -12,7 +12,7 @@ func equal(t *testing.T, exp, res int) {
 	t.Helper()
 
 	if exp != res {
-		t.Fail()
+		t.Fatalf("got %d, want %d", res, exp)
 	}
 }
 
@@ -68,7 +68,7 @@ func TestClose(t *testing.T) {
 
 	err := wg.Close()
 	if err != nil {
-		t.Fail()
+		t.Fatalf("got %v, want nil", err)
 	}
 
 	equal(t, 1, data["once"])

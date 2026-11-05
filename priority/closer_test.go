@@ -222,7 +222,7 @@ func TestPriority_Close_TimeoutKeepsSentErrors(t *testing.T) {
 
 	// One pass can still read the buffered error by luck. Repeat so a dropped error fails the test.
 	for range 12 {
-		closeErr, seen := closeWithStuck(t)
+		seen, closeErr := closeWithStuck(t)
 		test.RequireError(t, closeErr, test.ErrClose)
 
 		if seen != 2 {
@@ -231,7 +231,7 @@ func TestPriority_Close_TimeoutKeepsSentErrors(t *testing.T) {
 	}
 }
 
-func closeWithStuck(t *testing.T) (error, int) {
+func closeWithStuck(t *testing.T) (int, error) {
 	t.Helper()
 
 	const finished = 2
@@ -284,11 +284,11 @@ func closeWithStuck(t *testing.T) (error, int) {
 
 	select {
 	case err := <-done:
-		return err, seen
+		return seen, err
 	case <-time.After(time.Second):
 		t.Fatal("stuck func blocked Close")
 
-		return nil, seen
+		return seen, nil
 	}
 }
 

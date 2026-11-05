@@ -64,6 +64,6 @@ func RequireError(t *testing.T, exp, target error) {
 	t.Helper()
 
 	if !errors.Is(exp, target) {
-		t.Fatalf("expected %s, got %s", exp, target)
+		t.Fatalf("expected %s, got %s", target, exp)
 	}
 }

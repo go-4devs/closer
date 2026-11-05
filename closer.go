@@ -2,7 +2,6 @@ package closer
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"time"
 
@@ -31,37 +30,29 @@ var (
 
 // Add registers funcs at normal priority. It returns ErrClosed after Close has started.
 func Add(f ...func() error) error {
-	return wrap(closer.Add(f...))
+	return closer.Add(f...)
 }
 
 // AddByPriority registers funcs at priority. A higher value runs first, from 255 down to 0.
 // It returns ErrClosed after Close has started.
 func AddByPriority(priority uint8, f ...func() error) error {
-	return wrap(closer.AddByPriority(priority, f...))
+	return closer.AddByPriority(priority, f...)
 }
 
 // AddLast registers funcs near the end of Close. It returns ErrClosed after Close has started.
 func AddLast(f ...func() error) error {
-	return wrap(closer.AddLast(f...))
+	return closer.AddLast(f...)
 }
 
 // AddFirst registers funcs near the start of Close. It returns ErrClosed after Close has started.
 func AddFirst(f ...func() error) error {
-	return wrap(closer.AddFirst(f...))
+	return closer.AddFirst(f...)
 }
 
 // Close runs registered funcs once, highest priority first, and returns their errors.
 // A later Close returns the same error.
 func Close() error {
-	return wrap(closer.Close())
-}
-
-func wrap(err error) error {
-	if err == nil {
-		return nil
-	}
-
-	return fmt.Errorf("%w", err)
+	return closer.Close()
 }
 
 // Wait waits until ctx is canceled or a signal arrives, then runs Close.

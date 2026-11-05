@@ -5,7 +5,7 @@ import (
 	"errors"
 	"log"
 	"os"
-	"sort"
+	"slices"
 	"sync"
 	"time"
 
@@ -60,7 +60,7 @@ type Closer struct {
 	mu sync.Mutex
 
 	fnc         map[uint8][]func() error
-	priority    prioritySlice
+	priority    []uint8
 	sumPriority int64
 	once        sync.Once
 	handler     func(error)
@@ -106,7 +106,7 @@ func (c *Closer) AddByPriority(priority uint8, fnc ...func() error) error {
 
 	if len(c.fnc[priority]) == 0 {
 		c.priority = append(c.priority, priority)
-		sort.Sort(c.priority)
+		slices.SortFunc(c.priority, func(a, b uint8) int { return int(b) - int(a) })
 		c.sumPriority += int64(priority)
 	}
 
@@ -166,7 +166,7 @@ func (c *Closer) shutdown(ctx context.Context) error {
 		}
 		c.closed = true
 		funcs := c.fnc
-		order := append(prioritySlice(nil), c.priority...)
+		order := append([]uint8(nil), c.priority...)
 		count := c.len
 		c.fnc = nil
 		c.mu.Unlock()
@@ -187,7 +187,7 @@ func (c *Closer) shutdown(ctx context.Context) error {
 		go func() {
 			defer close(c.doneChan())
 
-			got = readErrs(deadline, errs, errHandler)
+			got = internal.ReadErrs(deadline, errs, errHandler)
 		}()
 
 		for _, pri := range order {
@@ -219,44 +219,6 @@ func (c *Closer) shutdown(ctx context.Context) error {
 
 func (c *Closer) doneChan() chan struct{} {
 	return internal.DoneChan(&c.mu, &c.done)
-}
-
-// readErrs keeps errors already sent. A stuck func sends nothing, so a finished deadline ends the wait.
-// shortcut: an error sent after this returns is dropped, upgrade if Close must include funcs that finish later.
-func readErrs(deadline context.Context, errs <-chan error, handle func(error)) []error {
-	var got []error
-
-	for range cap(errs) {
-		select {
-		case <-deadline.Done():
-			return drainErrs(got, errs, handle)
-		case err := <-errs:
-			got = keepErr(got, err, handle)
-		}
-	}
-
-	return got
-}
-
-func drainErrs(got []error, errs <-chan error, handle func(error)) []error {
-	for {
-		select {
-		case err := <-errs:
-			got = keepErr(got, err, handle)
-		default:
-			return got
-		}
-	}
-}
-
-func keepErr(got []error, err error, handle func(error)) []error {
-	if err == nil {
-		return got
-	}
-
-	handle(err)
-
-	return append(got, err)
 }
 
 type wait struct {
@@ -295,9 +257,3 @@ func (w *wait) after(start time.Time, priority int64) <-chan time.Time {
 
 	return time.After(timeout)
 }
-
-type prioritySlice []uint8
-
-func (p prioritySlice) Len() int           { return len(p) }
-func (p prioritySlice) Less(i, j int) bool { return p[i] > p[j] }
-func (p prioritySlice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }

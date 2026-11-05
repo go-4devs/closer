@@ -112,6 +112,35 @@ func TestAsyncAddAfterClose(t *testing.T) {
 	}
 }
 
+func TestAsyncClose_Timeout(t *testing.T) {
+	t.Parallel()
+
+	aCloser := async.New(
+		async.WithTimeout(30*time.Millisecond),
+		async.WithHandleError(func(error) {}),
+	)
+	test.RequireNil(t, aCloser.Add(func() error {
+		return test.ErrClose
+	}, func() error {
+		<-make(chan struct{})
+
+		return nil
+	}))
+
+	done := make(chan error, 1)
+
+	go func() {
+		done <- aCloser.Close()
+	}()
+
+	select {
+	case err := <-done:
+		test.RequireError(t, err, test.ErrClose)
+	case <-time.After(time.Second):
+		t.Fatal("Close blocked on the stuck func")
+	}
+}
+
 func TestAsyncClose_Panic(t *testing.T) {
 	t.Parallel()
 
