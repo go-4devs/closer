@@ -21,8 +21,13 @@ func SetErrHandler(eh func(error)) {
 	closer.SetErrHandler(eh)
 }
 
-// ErrClosed is returned when a func is added after Close has started.
-var ErrClosed = priority.ErrClosed
+var (
+	// ErrClosed is returned when a func is added after Close has started.
+	ErrClosed = priority.ErrClosed
+
+	// ErrPanic is returned when a close func panics.
+	ErrPanic = priority.ErrPanic
+)
 
 // Add add closed func.
 func Add(f ...func() error) error {

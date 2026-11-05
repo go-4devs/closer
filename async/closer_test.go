@@ -117,3 +117,41 @@ func TestAsyncAddAfterClose(t *testing.T) {
 		t.Fatal("closer added after Close ran")
 	}
 }
+
+func TestAsyncClose_Panic(t *testing.T) {
+	t.Parallel()
+
+	var panicErr error
+
+	ran := false
+	aCloser := async.New(async.WithHandleError(func(err error) {
+		panicErr = err
+	}))
+	test.RequireNil(t, aCloser.Add(func() error {
+		panic("boom")
+	}, func() error {
+		ran = true
+
+		return nil
+	}))
+
+	done := make(chan struct{})
+
+	go func() {
+		_ = aCloser.Close()
+
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("Close blocked after panic")
+	}
+
+	test.RequireError(t, panicErr, async.ErrPanic)
+
+	if !ran {
+		t.Fatal("closer after panic did not run")
+	}
+}

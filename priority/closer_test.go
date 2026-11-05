@@ -108,6 +108,45 @@ func TestPriority_Close_Timeout(t *testing.T) {
 	closed.TestEqual(t, []string{nameOne})
 }
 
+func TestPriority_Close_Panic(t *testing.T) {
+	t.Parallel()
+
+	var panicErr error
+
+	ran := false
+	pcl := priority.New(priority.WithHandleError(func(err error) {
+		panicErr = err
+	}))
+	test.RequireNil(t, pcl.AddByPriority(priority.First, func() error {
+		panic("boom")
+	}))
+	test.RequireNil(t, pcl.Add(func() error {
+		ran = true
+
+		return nil
+	}))
+
+	done := make(chan struct{})
+
+	go func() {
+		_ = pcl.Close()
+
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("Close blocked after panic")
+	}
+
+	test.RequireError(t, panicErr, priority.ErrPanic)
+
+	if !ran {
+		t.Fatal("closer after panic did not run")
+	}
+}
+
 func TestPriority_Wait(t *testing.T) {
 	t.Parallel()
 

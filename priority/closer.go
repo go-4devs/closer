@@ -2,13 +2,14 @@ package priority
 
 import (
 	"context"
-	"errors"
 	"log"
 	"os"
 	"os/signal"
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/go-4devs/closer/internal"
 )
 
 // defaults.
@@ -18,8 +19,13 @@ const (
 	Last   = 5
 )
 
-// ErrClosed is returned when a func is added after Close has started.
-var ErrClosed = errors.New("closer is closed")
+var (
+	// ErrClosed is returned when a func is added after Close has started.
+	ErrClosed = internal.ErrClosed
+
+	// ErrPanic is returned when a close func panics.
+	ErrPanic = internal.ErrPanic
+)
 
 // Option configure priority closer.
 type Option func(*Closer)
@@ -214,9 +220,9 @@ func (c *Closer) shutdown(ctx context.Context) error {
 
 			for _, f := range funcs[pri] {
 				go func(f func() error) {
-					errs <- f()
+					defer wgPri.Done()
 
-					wgPri.Done()
+					errs <- internal.Recover(f)
 				}(f)
 			}
 

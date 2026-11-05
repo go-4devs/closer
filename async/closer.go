@@ -2,14 +2,20 @@ package async
 
 import (
 	"context"
-	"errors"
 	"os"
 	"os/signal"
 	"sync"
+
+	"github.com/go-4devs/closer/internal"
 )
 
-// ErrClosed is returned when a func is added after Close has started.
-var ErrClosed = errors.New("closer is closed")
+var (
+	// ErrClosed is returned when a func is added after Close has started.
+	ErrClosed = internal.ErrClosed
+
+	// ErrPanic is returned when a close func panics.
+	ErrPanic = internal.ErrPanic
+)
 
 // Option configure async closer.
 type Option func(*Closer)
@@ -103,7 +109,7 @@ func (c *Closer) Close() error {
 
 		for _, f := range funcs {
 			go func(f func() error) {
-				errs <- f()
+				errs <- internal.Recover(f)
 			}(f)
 		}
 
